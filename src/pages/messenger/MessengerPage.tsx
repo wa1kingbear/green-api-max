@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ChatCircleDotsIcon,
   GearSixIcon,
   MagnifyingGlassIcon,
@@ -7,98 +8,178 @@ import {
   UserCircleIcon,
   UsersThreeIcon,
 } from '@phosphor-icons/react';
+import { useState } from 'react';
 
 import { useApp } from '../../app/useApp';
+import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
+import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
 import styles from './MessengerPage.module.css';
 
 export function MessengerPage() {
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
+  const createChat = useCreateChat();
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
+
+  const openNewChatDialog = () => setIsNewChatOpen(true);
+
+  const handleCreateChat = async (phoneNumber: string) => {
+    await createChat(phoneNumber);
+    setIsMobileChatOpen(true);
+  };
 
   return (
-    <main className={styles.shell}>
-      <nav className={styles.rail} aria-label="Основная навигация">
-        <div className={styles.railTop}>
+    <>
+      <main
+        className={`${styles.shell} ${isMobileChatOpen ? styles.shellMobileChatOpen : ''}`}
+      >
+        <nav className={styles.rail} aria-label="Основная навигация">
+          <div className={styles.railTop}>
+            <button
+              className={`${styles.railItem} ${styles.railItemActive}`}
+              type="button"
+            >
+              <ChatCircleDotsIcon size={27} weight="fill" />
+              <span>Чаты</span>
+            </button>
+            <button className={styles.railItem} type="button">
+              <UsersThreeIcon size={27} weight="fill" />
+              <span>Контакты</span>
+            </button>
+          </div>
           <button
-            className={`${styles.railItem} ${styles.railItemActive}`}
+            className={styles.railItem}
+            onClick={() => dispatch({ type: 'disconnect' })}
             type="button"
           >
-            <ChatCircleDotsIcon size={27} weight="fill" />
-            <span>Чаты</span>
+            <SignOutIcon size={27} weight="fill" />
+            <span>Выйти</span>
           </button>
-          <button className={styles.railItem} type="button">
-            <UsersThreeIcon size={27} weight="fill" />
-            <span>Контакты</span>
-          </button>
-        </div>
-        <button
-          className={styles.railItem}
-          onClick={() => dispatch({ type: 'disconnect' })}
-          type="button"
-        >
-          <SignOutIcon size={27} weight="fill" />
-          <span>Выйти</span>
-        </button>
-      </nav>
+        </nav>
 
-      <aside className={styles.sidebar}>
-        <header className={styles.sidebarHeader}>
-          <div>
-            <h1>Чаты</h1>
-            <span className={styles.connectionStatus}>Подключено</span>
-          </div>
-          <IconButton label="Новый чат" tone="accent">
-            <PlusIcon size={25} weight="bold" />
-          </IconButton>
-        </header>
+        <aside className={styles.sidebar}>
+          <header className={styles.sidebarHeader}>
+            <div>
+              <h1>Чаты</h1>
+              <span className={styles.connectionStatus}>Подключено</span>
+            </div>
+            <IconButton label="Новый чат" onClick={openNewChatDialog} tone="accent">
+              <PlusIcon size={25} weight="bold" />
+            </IconButton>
+          </header>
 
-        <label className={styles.search}>
-          <MagnifyingGlassIcon size={21} aria-hidden="true" />
-          <span className={styles.visuallyHidden}>Найти чат</span>
-          <input disabled placeholder="Найти" type="search" />
-        </label>
+          <label className={styles.search}>
+            <MagnifyingGlassIcon size={21} aria-hidden="true" />
+            <span className={styles.visuallyHidden}>Найти чат</span>
+            <input disabled placeholder="Найти" type="search" />
+          </label>
 
-        <section className={styles.emptyList} aria-label="Список чатов">
-          <span className={styles.avatarFallback} aria-hidden="true">
-            <UserCircleIcon size={46} weight="fill" />
-          </span>
-          <h2>Здесь появятся чаты</h2>
-          <p>Создайте первый диалог по номеру телефона.</p>
-          <button className={styles.secondaryButton} type="button">
-            <PlusIcon size={20} weight="bold" />
-            Новый чат
-          </button>
+          {state.activeChat ? (
+            <section className={styles.chatList} aria-label="Список чатов">
+              <button
+                className={styles.chatItem}
+                onClick={() => setIsMobileChatOpen(true)}
+                type="button"
+              >
+                <span className={styles.chatAvatar} aria-hidden="true">
+                  <UserCircleIcon size={42} weight="fill" />
+                </span>
+                <span className={styles.chatSummary}>
+                  <strong>{state.activeChat.displayName}</strong>
+                  <span>Чат создан</span>
+                </span>
+              </button>
+            </section>
+          ) : (
+            <section className={styles.emptyList} aria-label="Список чатов">
+              <span className={styles.avatarFallback} aria-hidden="true">
+                <UserCircleIcon size={46} weight="fill" />
+              </span>
+              <h2>Здесь появятся чаты</h2>
+              <p>Создайте первый диалог по номеру телефона.</p>
+              <button
+                className={styles.secondaryButton}
+                onClick={openNewChatDialog}
+                type="button"
+              >
+                <PlusIcon size={20} weight="bold" />
+                Новый чат
+              </button>
+            </section>
+          )}
+
+          <footer className={styles.mobileFooter}>
+            <button type="button">
+              <UsersThreeIcon size={27} weight="fill" />
+              Контакты
+            </button>
+            <button className={styles.mobileFooterActive} type="button">
+              <ChatCircleDotsIcon size={27} weight="fill" />
+              Чаты
+            </button>
+            <button onClick={() => dispatch({ type: 'disconnect' })} type="button">
+              <GearSixIcon size={27} weight="fill" />
+              Выйти
+            </button>
+          </footer>
+        </aside>
+
+        <section className={styles.conversation} aria-label="Переписка">
+          {state.activeChat ? (
+            <>
+              <header className={styles.chatHeader}>
+                <IconButton
+                  className={styles.backButton}
+                  label="Назад к чатам"
+                  onClick={() => setIsMobileChatOpen(false)}
+                >
+                  <ArrowLeftIcon size={25} weight="bold" />
+                </IconButton>
+                <span className={styles.headerAvatar} aria-hidden="true">
+                  <UserCircleIcon size={38} weight="fill" />
+                </span>
+                <div>
+                  <h2>{state.activeChat.displayName}</h2>
+                  <span>MAX</span>
+                </div>
+              </header>
+              <div className={styles.chatCanvas}>
+                <div className={styles.noMessages}>
+                  <span className={styles.chatGlyph} aria-hidden="true">
+                    <ChatCircleDotsIcon size={38} weight="fill" />
+                  </span>
+                  <h2>Начните переписку</h2>
+                  <p>В этом чате пока нет сообщений.</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={styles.emptyConversation}>
+              <span className={styles.chatGlyph} aria-hidden="true">
+                <ChatCircleDotsIcon size={40} weight="fill" />
+              </span>
+              <h2>Выберите или создайте чат</h2>
+              <p>Здесь появится переписка с пользователем MAX.</p>
+              <button
+                className={styles.primaryButton}
+                onClick={openNewChatDialog}
+                type="button"
+              >
+                <PlusIcon size={20} weight="bold" />
+                Новый чат
+              </button>
+            </div>
+          )}
         </section>
+      </main>
 
-        <footer className={styles.mobileFooter}>
-          <button type="button">
-            <UsersThreeIcon size={27} weight="fill" />
-            Контакты
-          </button>
-          <button className={styles.mobileFooterActive} type="button">
-            <ChatCircleDotsIcon size={27} weight="fill" />
-            Чаты
-          </button>
-          <button onClick={() => dispatch({ type: 'disconnect' })} type="button">
-            <GearSixIcon size={27} weight="fill" />
-            Выйти
-          </button>
-        </footer>
-      </aside>
-
-      <section className={styles.conversation} aria-label="Переписка">
-        <div className={styles.emptyConversation}>
-          <span className={styles.chatGlyph} aria-hidden="true">
-            <ChatCircleDotsIcon size={40} weight="fill" />
-          </span>
-          <h2>Выберите или создайте чат</h2>
-          <p>Здесь появится переписка с пользователем MAX.</p>
-          <button className={styles.primaryButton} type="button">
-            <PlusIcon size={20} weight="bold" />
-            Новый чат
-          </button>
-        </div>
-      </section>
-    </main>
+      {isNewChatOpen && (
+        <NewChatDialog
+          onClose={() => setIsNewChatOpen(false)}
+          onCreate={handleCreateChat}
+        />
+      )}
+    </>
   );
 }

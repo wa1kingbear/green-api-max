@@ -17,6 +17,23 @@ describe('appReducer', () => {
     expect(state.credentials).toEqual(credentials);
   });
 
+  it('opens a chat returned by CheckAccount', () => {
+    const chat = {
+      chatId: '10000000',
+      phoneNumber: '79991234567',
+      displayName: '+7 999 123-45-67',
+    };
+
+    const state = appReducer(initialAppState, {
+      type: 'open-chat',
+      payload: chat,
+    });
+
+    expect(state.activeChat).toEqual(chat);
+    expect(state.messages).toEqual([]);
+    expect(state.processedMessageIds.size).toBe(0);
+  });
+
   it('clears session data on disconnect', () => {
     const connectedState = {
       ...initialAppState,

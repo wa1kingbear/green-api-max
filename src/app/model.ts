@@ -33,7 +33,9 @@ export interface AppState {
 }
 
 export type AppAction =
-  { type: 'connect'; payload: Credentials } | { type: 'disconnect' };
+  | { type: 'connect'; payload: Credentials }
+  | { type: 'open-chat'; payload: Chat }
+  | { type: 'disconnect' };
 
 export const initialAppState: AppState = {
   connection: 'disconnected',

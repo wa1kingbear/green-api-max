@@ -1,0 +1,48 @@
+import { useApp } from '../../../app/useApp';
+import { checkAccount } from '../../../shared/api/checkAccount';
+import { GreenApiError } from '../../../shared/api/greenApiError';
+import { formatPhoneNumber } from './phone';
+
+export function useCreateChat() {
+  const { state, dispatch } = useApp();
+
+  return async (phoneNumber: string) => {
+    if (!state.credentials) {
+      throw new GreenApiError({
+        code: 'invalid-credentials',
+        message: 'Подключитесь к GREEN-API ещё раз.',
+        retryable: false,
+      });
+    }
+
+    const result = await checkAccount({
+      credentials: state.credentials,
+      phoneNumber,
+    });
+
+    if (!result.exist) {
+      throw new GreenApiError({
+        code: 'account-not-found',
+        message: 'Пользователь MAX с таким номером не найден.',
+        retryable: false,
+      });
+    }
+
+    if (!result.chatId) {
+      throw new GreenApiError({
+        code: 'unexpected-response',
+        message: 'GREEN-API не вернул идентификатор чата.',
+        retryable: true,
+      });
+    }
+
+    dispatch({
+      type: 'open-chat',
+      payload: {
+        chatId: result.chatId,
+        phoneNumber,
+        displayName: formatPhoneNumber(phoneNumber),
+      },
+    });
+  };
+}
