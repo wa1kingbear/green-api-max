@@ -13,13 +13,30 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         activeChat: action.payload,
         messages: [],
-        processedMessageIds: new Set(),
       };
     case 'add-message':
       return {
         ...state,
         messages: [...state.messages, action.payload],
       };
+    case 'receive-message': {
+      if (
+        !state.activeChat ||
+        action.payload.chatId !== state.activeChat.chatId ||
+        state.processedMessageIds.has(action.payload.id)
+      ) {
+        return state;
+      }
+
+      const processedMessageIds = new Set(state.processedMessageIds);
+      processedMessageIds.add(action.payload.id);
+
+      return {
+        ...state,
+        messages: [...state.messages, action.payload],
+        processedMessageIds,
+      };
+    }
     case 'message-sent':
       return {
         ...state,
@@ -50,6 +67,30 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             ? { ...message, status: 'sending' as const }
             : message,
         ),
+      };
+    case 'polling-degraded':
+      if (!state.credentials) {
+        return state;
+      }
+
+      return {
+        ...state,
+        connection: 'degraded',
+        pollingError: action.payload,
+      };
+    case 'polling-recovered':
+      if (!state.credentials) {
+        return state;
+      }
+
+      if (state.connection === 'connected' && state.pollingError === null) {
+        return state;
+      }
+
+      return {
+        ...state,
+        connection: 'connected',
+        pollingError: null,
       };
     case 'disconnect':
       return {

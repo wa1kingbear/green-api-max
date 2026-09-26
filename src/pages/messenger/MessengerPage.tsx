@@ -7,12 +7,14 @@ import {
   SignOutIcon,
   UserCircleIcon,
   UsersThreeIcon,
+  WarningCircleIcon,
 } from '@phosphor-icons/react';
 import { useState } from 'react';
 
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
 import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
+import { useReceiveMessages } from '../../features/receive-messages/model/useReceiveMessages';
 import { useSendMessage } from '../../features/send-message/model/useSendMessage';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
 import { MessageComposer } from '../../widgets/message-composer/MessageComposer';
@@ -23,9 +25,11 @@ export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
   const { sendMessage, retryMessage } = useSendMessage();
+  useReceiveMessages();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
   const latestMessage = state.messages.at(-1);
+  const isConnectionDegraded = state.connection === 'degraded';
 
   const openNewChatDialog = () => setIsNewChatOpen(true);
 
@@ -67,7 +71,15 @@ export function MessengerPage() {
           <header className={styles.sidebarHeader}>
             <div>
               <h1>Чаты</h1>
-              <span className={styles.connectionStatus}>Подключено</span>
+              <span
+                aria-live="polite"
+                className={`${styles.connectionStatus} ${
+                  isConnectionDegraded ? styles.connectionStatusDegraded : ''
+                }`}
+                title={state.pollingError?.message}
+              >
+                {isConnectionDegraded ? 'Восстанавливаем связь…' : 'Подключено'}
+              </span>
             </div>
             <IconButton label="Новый чат" onClick={openNewChatDialog} tone="accent">
               <PlusIcon size={25} weight="bold" />
@@ -149,6 +161,15 @@ export function MessengerPage() {
                   <span>MAX</span>
                 </div>
               </header>
+              {isConnectionDegraded && (
+                <div className={styles.connectionNotice} role="status">
+                  <WarningCircleIcon size={18} weight="fill" aria-hidden="true" />
+                  <span>
+                    {state.pollingError?.message ??
+                      'Соединение потеряно. Пытаемся восстановить…'}
+                  </span>
+                </div>
+              )}
               <MessageList messages={state.messages} onRetry={retryMessage} />
               <MessageComposer onSend={sendMessage} />
             </>

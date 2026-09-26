@@ -6,6 +6,9 @@ export type GreenApiErrorCode =
   | 'check-account-limit'
   | 'message-too-long'
   | 'send-message-failed'
+  | 'receive-notification-failed'
+  | 'delete-notification-failed'
+  | 'webhook-conflict'
   | 'network-error'
   | 'unexpected-response';
 

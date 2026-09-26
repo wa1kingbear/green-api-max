@@ -87,6 +87,61 @@ describe('appReducer', () => {
     expect(retryingState.messages[0]?.status).toBe('sending');
   });
 
+  it('adds an incoming message only once', () => {
+    const activeChat = {
+      chatId: '10000000',
+      phoneNumber: '79991234567',
+      displayName: '+7 999 123-45-67',
+    };
+    const message = {
+      id: 'incoming-1',
+      chatId: '10000000',
+      direction: 'incoming' as const,
+      text: 'Ответ',
+      timestamp: 1,
+      status: 'sent' as const,
+    };
+    const chatState = { ...initialAppState, activeChat };
+    const receivedState = appReducer(chatState, {
+      type: 'receive-message',
+      payload: message,
+    });
+    const duplicateState = appReducer(receivedState, {
+      type: 'receive-message',
+      payload: message,
+    });
+
+    expect(receivedState.messages).toEqual([message]);
+    expect(receivedState.processedMessageIds.has('incoming-1')).toBe(true);
+    expect(duplicateState).toBe(receivedState);
+  });
+
+  it('marks polling as degraded and clears the error after recovery', () => {
+    const connectedState = appReducer(initialAppState, {
+      type: 'connect',
+      payload: {
+        idInstance: '1101000001',
+        apiTokenInstance: 'test-token',
+      },
+    });
+    const degradedState = appReducer(connectedState, {
+      type: 'polling-degraded',
+      payload: {
+        code: 'network-error',
+        message: 'Соединение потеряно.',
+        retryable: true,
+      },
+    });
+    const recoveredState = appReducer(degradedState, {
+      type: 'polling-recovered',
+    });
+
+    expect(degradedState.connection).toBe('degraded');
+    expect(degradedState.pollingError?.code).toBe('network-error');
+    expect(recoveredState.connection).toBe('connected');
+    expect(recoveredState.pollingError).toBeNull();
+  });
+
   it('clears session data on disconnect', () => {
     const connectedState = {
       ...initialAppState,
