@@ -160,6 +160,33 @@
   transform: translateY(1px);
 }
 
+.submitButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.connectionError {
+  padding: 13px 14px;
+  color: #7d4110;
+  background: #fff5e7;
+  border: 1px solid #f0d6b4;
+  border-radius: 13px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.connectionError p {
+  margin: 0;
+}
+
+.connectionError ul {
+  display: grid;
+  margin: 7px 0;
+  padding-left: 19px;
+  gap: 4px;
+}
+
 .privacyNote {
   display: flex;
   gap: 10px;

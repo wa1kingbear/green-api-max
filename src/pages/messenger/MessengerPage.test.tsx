@@ -8,10 +8,14 @@ import { AppProvider } from '../../app/AppProvider';
 import { GREEN_API_BASE_URL } from '../../shared/config/environment';
 
 const checkAccountEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/checkAccount/test-token`;
+const getSettingsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getSettings/test-token`;
 const sendMessageEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/sendMessage/test-token`;
 const receiveNotificationEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/receiveNotification/test-token`;
 const deleteNotificationEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/deleteNotification/test-token/:receiptId`;
 const server = setupServer(
+  http.get(getSettingsEndpoint, () =>
+    HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
+  ),
   http.get(receiveNotificationEndpoint, async () => {
     await delay('infinite');
   }),
@@ -36,6 +40,7 @@ async function connect(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('ID инстанса'), '1101000001');
   await user.type(screen.getByLabelText('API-токен инстанса'), 'test-token');
   await user.click(screen.getByRole('button', { name: 'Подключиться' }));
+  await screen.findByRole('heading', { name: 'Чаты' });
 }
 
 async function createChat(user: ReturnType<typeof userEvent.setup>) {
@@ -247,8 +252,7 @@ describe('receiving messages', () => {
       http.get(receiveNotificationEndpoint, () =>
         HttpResponse.json(
           {
-            reason:
-              'Message cannot be received because custom webhook url is set.',
+            reason: 'Message cannot be received because custom webhook url is set.',
           },
           { status: 400 },
         ),
