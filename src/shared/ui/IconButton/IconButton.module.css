@@ -1,0 +1,33 @@
+.button {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: #303438;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.button:hover {
+  background: #f0f2f4;
+}
+
+.button:active {
+  transform: scale(0.94);
+}
+
+.accent {
+  color: #fff;
+  background: var(--accent);
+}
+
+.accent:hover {
+  color: #fff;
+  background: var(--accent-hover);
+}
