@@ -276,33 +276,6 @@
   display: none;
 }
 
-.chatCanvas {
-  display: grid;
-  min-height: 0;
-  flex: 1;
-  place-items: center;
-}
-
-.noMessages {
-  display: flex;
-  padding: 28px;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.noMessages h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: -0.02em;
-}
-
-.noMessages p {
-  margin: 7px 0 0;
-  color: #657683;
-  font-size: 14px;
-}
-
 .chatGlyph {
   display: grid;
   width: 74px;
@@ -408,10 +381,6 @@
   .chatHeader {
     min-height: 82px;
     padding: max(10px, env(safe-area-inset-top)) 14px 10px;
-  }
-
-  .chatCanvas {
-    min-height: calc(100dvh - 82px);
   }
 
   .mobileFooter {

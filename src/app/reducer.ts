@@ -15,6 +15,42 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         messages: [],
         processedMessageIds: new Set(),
       };
+    case 'add-message':
+      return {
+        ...state,
+        messages: [...state.messages, action.payload],
+      };
+    case 'message-sent':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.payload.temporaryId
+            ? {
+                ...message,
+                id: action.payload.idMessage,
+                status: 'sent' as const,
+              }
+            : message,
+        ),
+      };
+    case 'message-failed':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.payload.id
+            ? { ...message, status: 'failed' as const }
+            : message,
+        ),
+      };
+    case 'message-retrying':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.payload.id
+            ? { ...message, status: 'sending' as const }
+            : message,
+        ),
+      };
     case 'disconnect':
       return {
         connection: 'disconnected',

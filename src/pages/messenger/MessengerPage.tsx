@@ -13,14 +13,19 @@ import { useState } from 'react';
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
 import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
+import { useSendMessage } from '../../features/send-message/model/useSendMessage';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
+import { MessageComposer } from '../../widgets/message-composer/MessageComposer';
+import { MessageList } from '../../widgets/message-list/MessageList';
 import styles from './MessengerPage.module.css';
 
 export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
+  const { sendMessage, retryMessage } = useSendMessage();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
+  const latestMessage = state.messages.at(-1);
 
   const openNewChatDialog = () => setIsNewChatOpen(true);
 
@@ -87,7 +92,7 @@ export function MessengerPage() {
                 </span>
                 <span className={styles.chatSummary}>
                   <strong>{state.activeChat.displayName}</strong>
-                  <span>Чат создан</span>
+                  <span>{latestMessage?.text ?? 'Чат создан'}</span>
                 </span>
               </button>
             </section>
@@ -144,15 +149,8 @@ export function MessengerPage() {
                   <span>MAX</span>
                 </div>
               </header>
-              <div className={styles.chatCanvas}>
-                <div className={styles.noMessages}>
-                  <span className={styles.chatGlyph} aria-hidden="true">
-                    <ChatCircleDotsIcon size={38} weight="fill" />
-                  </span>
-                  <h2>Начните переписку</h2>
-                  <p>В этом чате пока нет сообщений.</p>
-                </div>
-              </div>
+              <MessageList messages={state.messages} onRetry={retryMessage} />
+              <MessageComposer onSend={sendMessage} />
             </>
           ) : (
             <div className={styles.emptyConversation}>

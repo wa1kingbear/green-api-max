@@ -35,6 +35,13 @@ export interface AppState {
 export type AppAction =
   | { type: 'connect'; payload: Credentials }
   | { type: 'open-chat'; payload: Chat }
+  | { type: 'add-message'; payload: Message }
+  | {
+      type: 'message-sent';
+      payload: { temporaryId: string; idMessage: string };
+    }
+  | { type: 'message-failed'; payload: { id: string } }
+  | { type: 'message-retrying'; payload: { id: string } }
   | { type: 'disconnect' };
 
 export const initialAppState: AppState = {

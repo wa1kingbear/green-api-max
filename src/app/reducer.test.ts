@@ -34,6 +34,59 @@ describe('appReducer', () => {
     expect(state.processedMessageIds.size).toBe(0);
   });
 
+  it('moves an optimistic message from sending to sent', () => {
+    const optimisticMessage = {
+      id: 'temp-1',
+      chatId: 'chat-1',
+      direction: 'outgoing' as const,
+      text: 'Привет',
+      timestamp: 1,
+      status: 'sending' as const,
+    };
+    const sendingState = appReducer(initialAppState, {
+      type: 'add-message',
+      payload: optimisticMessage,
+    });
+    const sentState = appReducer(sendingState, {
+      type: 'message-sent',
+      payload: { temporaryId: 'temp-1', idMessage: '1763115112345' },
+    });
+
+    expect(sendingState.messages).toEqual([optimisticMessage]);
+    expect(sentState.messages[0]).toMatchObject({
+      id: '1763115112345',
+      status: 'sent',
+    });
+  });
+
+  it('marks a message as failed and returns it to sending on retry', () => {
+    const stateWithMessage = {
+      ...initialAppState,
+      messages: [
+        {
+          id: 'temp-1',
+          chatId: 'chat-1',
+          direction: 'outgoing' as const,
+          text: 'Привет',
+          timestamp: 1,
+          status: 'sending' as const,
+        },
+      ],
+    };
+
+    const failedState = appReducer(stateWithMessage, {
+      type: 'message-failed',
+      payload: { id: 'temp-1' },
+    });
+    const retryingState = appReducer(failedState, {
+      type: 'message-retrying',
+      payload: { id: 'temp-1' },
+    });
+
+    expect(failedState.messages[0]?.status).toBe('failed');
+    expect(retryingState.messages[0]?.status).toBe('sending');
+  });
+
   it('clears session data on disconnect', () => {
     const connectedState = {
       ...initialAppState,

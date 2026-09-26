@@ -4,6 +4,8 @@ export type GreenApiErrorCode =
   | 'invalid-phone'
   | 'account-not-found'
   | 'check-account-limit'
+  | 'message-too-long'
+  | 'send-message-failed'
   | 'network-error'
   | 'unexpected-response';
 
