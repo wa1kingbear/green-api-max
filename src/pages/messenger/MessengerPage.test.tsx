@@ -43,22 +43,225 @@ async function connect(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByRole('heading', { name: 'Чаты' });
 }
 
-async function createChat(user: ReturnType<typeof userEvent.setup>) {
-  server.use(
-    http.post(checkAccountEndpoint, () =>
-      HttpResponse.json({
-        exist: true,
-        chatId: '10000000',
-        fromCache: false,
-      }),
-    ),
-  );
+async function createChat(
+  user: ReturnType<typeof userEvent.setup>,
+  mockCheckAccount = true,
+) {
+  if (mockCheckAccount) {
+    server.use(
+      http.post(checkAccountEndpoint, () =>
+        HttpResponse.json({
+          exist: true,
+          chatId: '10000000',
+          fromCache: false,
+        }),
+      ),
+    );
+  }
 
   await user.click(screen.getAllByRole('button', { name: 'Новый чат' })[0]);
   await user.type(screen.getByLabelText('Номер телефона'), '+7 (999) 123-45-67');
   await user.click(screen.getByRole('button', { name: 'Продолжить' }));
   await screen.findByRole('heading', { name: '+7 999 123-45-67' });
 }
+
+function incomingTextNotification({
+  chatId = '10000000',
+  idMessage = 'incoming-1',
+  text = 'Ответ из MAX',
+}: {
+  chatId?: string;
+  idMessage?: string;
+  text?: string;
+} = {}) {
+  return {
+    typeWebhook: 'incomingMessageReceived',
+    timestamp: 1763115112,
+    idMessage,
+    senderData: { chatId },
+    messageData: {
+      typeMessage: 'textMessage',
+      textMessageData: { textMessage: text },
+    },
+  };
+}
+
+describe('messenger integration', () => {
+  it('completes settings, chat, send, receive and delete flow', async () => {
+    const order: string[] = [];
+    let notificationDelivered = false;
+    let releaseNotification: (() => void) | undefined;
+    const messageSent = new Promise<void>((resolve) => {
+      releaseNotification = resolve;
+    });
+
+    server.use(
+      http.get(getSettingsEndpoint, () => {
+        order.push('get-settings');
+        return HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' });
+      }),
+      http.post(checkAccountEndpoint, () => {
+        order.push('check-account');
+        return HttpResponse.json({
+          exist: true,
+          chatId: '10000000',
+          fromCache: false,
+        });
+      }),
+      http.post(sendMessageEndpoint, async ({ request }) => {
+        order.push('send-message');
+        expect(await request.json()).toEqual({
+          chatId: '10000000',
+          message: 'Привет',
+        });
+        releaseNotification?.();
+        return HttpResponse.json({ idMessage: 'outgoing-1' });
+      }),
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await messageSent;
+        notificationDelivered = true;
+        order.push('receive-notification');
+        return HttpResponse.json({
+          receiptId: 101,
+          body: incomingTextNotification(),
+        });
+      }),
+      http.delete(deleteNotificationEndpoint, ({ params }) => {
+        order.push(`delete-notification-${String(params.receiptId)}`);
+        return HttpResponse.json({ result: true, reason: '' });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await createChat(user, false);
+    await user.type(screen.getByLabelText('Сообщение'), 'Привет{Enter}');
+
+    const messageList = screen.getByLabelText('Сообщения');
+    expect(await within(messageList).findByText('Ответ из MAX')).toBeInTheDocument();
+    expect(within(messageList).getAllByTitle('Отправлено')).toHaveLength(2);
+    await waitFor(() =>
+      expect(order).toEqual([
+        'get-settings',
+        'check-account',
+        'send-message',
+        'receive-notification',
+        'delete-notification-101',
+      ]),
+    );
+    expect(within(messageList).getByText('Привет')).toBeInTheDocument();
+  });
+
+  it('deletes an unsupported notification without rendering it', async () => {
+    let notificationDelivered = false;
+    let deletedReceiptId: string | undefined;
+
+    server.use(
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await delay(300);
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 202,
+          body: {
+            typeWebhook: 'stateInstanceChanged',
+            stateInstance: 'authorized',
+          },
+        });
+      }),
+      http.delete(deleteNotificationEndpoint, ({ params }) => {
+        deletedReceiptId = String(params.receiptId);
+        return HttpResponse.json({ result: true, reason: '' });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await createChat(user);
+
+    await waitFor(() => expect(deletedReceiptId).toBe('202'));
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('deletes a message from another chat without rendering it', async () => {
+    let notificationDelivered = false;
+    let deletedReceiptId: string | undefined;
+
+    server.use(
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await delay(300);
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 303,
+          body: incomingTextNotification({
+            chatId: '20000000',
+            idMessage: 'foreign-message',
+            text: 'Чужой чат',
+          }),
+        });
+      }),
+      http.delete(deleteNotificationEndpoint, ({ params }) => {
+        deletedReceiptId = String(params.receiptId);
+        return HttpResponse.json({ result: true, reason: '' });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await createChat(user);
+
+    await waitFor(() => expect(deletedReceiptId).toBe('303'));
+    expect(screen.queryByText('Чужой чат')).not.toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('aborts the active ReceiveNotification request on disconnect', async () => {
+    let requestStarted = false;
+    let requestAborted = false;
+
+    server.use(
+      http.get(receiveNotificationEndpoint, async ({ request }) => {
+        requestStarted = true;
+        await new Promise<void>((resolve) => {
+          request.signal.addEventListener(
+            'abort',
+            () => {
+              requestAborted = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+        return new HttpResponse(null, { status: 200 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await waitFor(() => expect(requestStarted).toBe(true));
+    await user.click(screen.getAllByRole('button', { name: 'Выйти' })[0]);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Подключите GREEN-API' }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(requestAborted).toBe(true));
+  });
+});
 
 describe('creating a chat', () => {
   it('opens a chat returned by CheckAccount', async () => {
@@ -177,16 +380,7 @@ describe('receiving messages', () => {
         notificationDelivered = true;
         return HttpResponse.json({
           receiptId: 1234567,
-          body: {
-            typeWebhook: 'incomingMessageReceived',
-            timestamp: 1763115112,
-            idMessage: 'incoming-1',
-            senderData: { chatId: '10000000' },
-            messageData: {
-              typeMessage: 'textMessage',
-              textMessageData: { textMessage: 'Ответ из MAX' },
-            },
-          },
+          body: incomingTextNotification(),
         });
       }),
       http.delete(deleteNotificationEndpoint, ({ params }) => {
@@ -222,16 +416,10 @@ describe('receiving messages', () => {
 
         return HttpResponse.json({
           receiptId: currentReceiptId,
-          body: {
-            typeWebhook: 'incomingMessageReceived',
-            timestamp: 1763115112,
+          body: incomingTextNotification({
             idMessage: 'same-message',
-            senderData: { chatId: '10000000' },
-            messageData: {
-              typeMessage: 'textMessage',
-              textMessageData: { textMessage: 'Только один раз' },
-            },
-          },
+            text: 'Только один раз',
+          }),
         });
       }),
     );
