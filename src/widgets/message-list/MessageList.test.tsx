@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import type { Message } from '../../app/model';
 import { MessageList } from './MessageList';
@@ -167,6 +167,74 @@ describe('MessageList', () => {
 
     expect(list.scrollTop).toBe(150);
 
+    if (originalScrollHeight) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollHeight',
+        originalScrollHeight,
+      );
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+    }
+  });
+
+  it('renders only the visible window for a long message history', async () => {
+    const messages = Array.from({ length: 250 }, (_, index) =>
+      createMessage(String(index), index + 1),
+    );
+    const originalClientHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'clientHeight',
+    );
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollHeight',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get: () => 600,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get: () => 18_000,
+    });
+
+    render(
+      <MessageList
+        canLoadMore={false}
+        isLoadingMore={false}
+        loadMoreFailed={false}
+        messages={messages}
+        onLoadMore={() => undefined}
+        onRetry={() => undefined}
+      />,
+    );
+
+    const list = screen.getByLabelText('Сообщения');
+    expect(screen.getByTestId('virtual-message-list')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(list.querySelectorAll('article').length).toBeGreaterThan(0);
+      expect(list.querySelectorAll('article').length).toBeLessThan(40);
+    });
+    expect(screen.queryByText('Сообщение 0')).not.toBeInTheDocument();
+    expect(screen.getByText('Сообщение 249')).toBeInTheDocument();
+
+    list.scrollTop = 0;
+    fireEvent.scroll(list);
+    await waitFor(() => {
+      expect(screen.getByText('Сообщение 0')).toBeInTheDocument();
+      expect(screen.queryByText('Сообщение 249')).not.toBeInTheDocument();
+    });
+
+    if (originalClientHeight) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'clientHeight',
+        originalClientHeight,
+      );
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, 'clientHeight');
+    }
     if (originalScrollHeight) {
       Object.defineProperty(
         HTMLElement.prototype,

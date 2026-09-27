@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { App } from '../../app/App';
@@ -302,6 +302,57 @@ describe('messenger integration', () => {
     await waitFor(() => expect(historyRequests).toEqual(['10000000']), {
       timeout: 2_500,
     });
+  });
+
+  it('renders only the visible window of a long chat list', async () => {
+    class IdleIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '240px 0px';
+      readonly scrollMargin = '0px';
+      readonly thresholds = [0];
+
+      disconnect() {}
+      observe() {}
+      takeRecords() {
+        return [];
+      }
+      unobserve() {}
+    }
+
+    vi.stubGlobal('IntersectionObserver', IdleIntersectionObserver);
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json(
+          Array.from({ length: 100 }, (_, index) => ({
+            chatId: String(10_000_000 + index),
+            name: `Чат ${index}`,
+            type: 'user',
+            phoneNumber: 79_000_000_000 + index,
+          })),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const list = await screen.findByLabelText('Список чатов');
+    expect(screen.getByTestId('virtual-chat-list')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button').length).toBeLessThan(25);
+    expect(within(list).getByRole('button', { name: /Чат 0/ })).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /Чат 99/ })).toBeNull();
+
+    Object.defineProperty(list, 'clientHeight', {
+      configurable: true,
+      value: 400,
+    });
+    list.scrollTop = 7_600;
+    fireEvent.scroll(list);
+
+    expect(
+      await within(list).findByRole('button', { name: /Чат 99/ }),
+    ).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /Чат 0/ })).toBeNull();
   });
 
   it('shows a skeleton while the chat preview is loading', async () => {

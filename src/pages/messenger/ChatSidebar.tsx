@@ -7,7 +7,7 @@ import {
   WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Chat } from '../../app/model';
 import {
@@ -17,6 +17,7 @@ import {
   useSessionState,
 } from '../../app/useApp';
 import { setChatIdInUrl } from '../../shared/lib/chatUrl';
+import { useFixedVirtualList } from '../../shared/lib/useFixedVirtualList';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
 import { ChatAvatar } from './ChatAvatar';
 import styles from './MessengerPage.module.css';
@@ -27,6 +28,9 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   reloadChats: () => void;
 }
+
+const CHAT_LIST_VIRTUALIZATION_THRESHOLD = 50;
+const CHAT_LIST_ITEM_HEIGHT = 80;
 
 function getChatPreview(chat: { lastMessage?: string; previewStatus?: string }) {
   if (chat.lastMessage) {
@@ -140,16 +144,26 @@ export const ChatSidebar = memo(function ChatSidebar({
   const { chats, chatsError, chatsStatus } = useChatListState();
   const { connection, pollingError } = useSessionState();
   const [searchQuery, setSearchQuery] = useState('');
-  const chatListRef = useRef<HTMLElement | null>(null);
   const isConnectionDegraded = connection === 'degraded';
   const filteredChats = useMemo(
     () => chats.filter((chat) => chatMatchesSearch(chat, searchQuery)),
     [chats, searchQuery],
   );
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const isChatListVirtualized =
+    filteredChats.length > CHAT_LIST_VIRTUALIZATION_THRESHOLD;
+  const virtualList = useFixedVirtualList({
+    count: filteredChats.length,
+    enabled: isChatListVirtualized,
+    itemHeight: CHAT_LIST_ITEM_HEIGHT,
+  });
+  const renderedChats = filteredChats.slice(
+    virtualList.startIndex,
+    virtualList.endIndex,
+  );
   const filteredChatIds = useMemo(
-    () => filteredChats.map((chat) => chat.chatId).join('\u0000'),
-    [filteredChats],
+    () => renderedChats.map((chat) => chat.chatId).join('\u0000'),
+    [renderedChats],
   );
 
   useEffect(() => {
@@ -159,7 +173,7 @@ export const ChatSidebar = memo(function ChatSidebar({
   }, [chatsStatus, hasSearchQuery, loadAllChatPreviews]);
 
   useEffect(() => {
-    const list = chatListRef.current;
+    const list = virtualList.containerRef.current;
 
     if (!list) {
       return undefined;
@@ -196,7 +210,7 @@ export const ChatSidebar = memo(function ChatSidebar({
 
     chatItems.forEach((item) => observer.observe(item));
     return () => observer.disconnect();
-  }, [chatsStatus, filteredChatIds, loadChatDetails]);
+  }, [chatsStatus, filteredChatIds, loadChatDetails, virtualList.containerRef]);
 
   const openChat = useCallback(
     (chat: Chat) => {
@@ -259,10 +273,14 @@ export const ChatSidebar = memo(function ChatSidebar({
             autoComplete="off"
             disabled={chats.length === 0}
             id="chat-search"
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              virtualList.scrollToStart();
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Escape' && searchQuery) {
                 setSearchQuery('');
+                virtualList.scrollToStart();
               }
             }}
             placeholder="Найти"
@@ -273,7 +291,10 @@ export const ChatSidebar = memo(function ChatSidebar({
             <button
               aria-label="Очистить поиск"
               className={styles.searchClear}
-              onClick={() => setSearchQuery('')}
+              onClick={() => {
+                setSearchQuery('');
+                virtualList.scrollToStart();
+              }}
               type="button"
             >
               <XIcon size={17} weight="bold" />
@@ -287,16 +308,44 @@ export const ChatSidebar = memo(function ChatSidebar({
               className={styles.chatList}
               id="chat-list"
               aria-label="Список чатов"
-              ref={chatListRef}
+              onScroll={virtualList.onScroll}
+              ref={virtualList.containerRef}
             >
-              {filteredChats.map((chat) => (
-                <ChatListItem
-                  chat={chat}
-                  isActive={activeChat?.chatId === chat.chatId}
-                  key={chat.chatId}
-                  onOpen={openChat}
-                />
-              ))}
+              {isChatListVirtualized ? (
+                <div
+                  className={styles.virtualChatSpace}
+                  data-testid="virtual-chat-list"
+                  style={{ height: virtualList.totalHeight }}
+                >
+                  {renderedChats.map((chat, visibleIndex) => {
+                    const index = virtualList.startIndex + visibleIndex;
+                    return (
+                      <div
+                        className={styles.virtualChatRow}
+                        key={chat.chatId}
+                        style={{
+                          transform: `translateY(${index * virtualList.itemHeight}px)`,
+                        }}
+                      >
+                        <ChatListItem
+                          chat={chat}
+                          isActive={activeChat?.chatId === chat.chatId}
+                          onOpen={openChat}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                renderedChats.map((chat) => (
+                  <ChatListItem
+                    chat={chat}
+                    isActive={activeChat?.chatId === chat.chatId}
+                    key={chat.chatId}
+                    onOpen={openChat}
+                  />
+                ))
+              )}
             </section>
           ) : (
             <section className={styles.searchEmpty} role="status">
@@ -305,7 +354,10 @@ export const ChatSidebar = memo(function ChatSidebar({
               <p>Попробуйте изменить имя или номер телефона.</p>
               <button
                 className={styles.secondaryButton}
-                onClick={() => setSearchQuery('')}
+                onClick={() => {
+                  setSearchQuery('');
+                  virtualList.scrollToStart();
+                }}
                 type="button"
               >
                 Сбросить поиск

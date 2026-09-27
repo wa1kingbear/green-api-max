@@ -260,6 +260,25 @@
   overscroll-behavior: contain;
 }
 
+.virtualChatSpace {
+  position: relative;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+.virtualChatRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 80px;
+  padding-bottom: 4px;
+}
+
+.virtualChatRow .chatItem {
+  height: 76px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .chatList {
     scrollbar-color: transparent transparent;

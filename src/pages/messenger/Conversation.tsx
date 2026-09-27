@@ -95,6 +95,7 @@ export const Conversation = memo(function Conversation({
             <MessageList
               canLoadMore={hasMore}
               isLoadingMore={isLoadingMore}
+              key={activeChat.chatId}
               loadMoreFailed={loadMoreFailed}
               messages={messages}
               onLoadMore={loadMoreHistory}
