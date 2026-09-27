@@ -116,15 +116,59 @@
   color: #979ca1;
   background: var(--surface-soft);
   border-radius: 14px;
+  transition: color 160ms ease;
+}
+
+.search:focus-within {
+  color: var(--accent);
 }
 
 .search input {
+  appearance: none;
   min-width: 0;
   flex: 1;
-  color: #888e93;
+  color: var(--text);
   background: transparent;
   border: 0;
   outline: none;
+}
+
+.search input:focus,
+.search input:focus-visible {
+  border: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search input:disabled {
+  cursor: default;
+}
+
+.searchClear {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-right: -7px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #77818a;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+}
+
+.searchClear:hover {
+  color: #4c5660;
+  background: #edf1f4;
+}
+
+.searchClear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .emptyList {
@@ -136,6 +180,33 @@
   align-items: center;
   justify-content: center;
   text-align: center;
+}
+
+.searchEmpty {
+  display: flex;
+  min-height: 0;
+  padding: 42px 30px 116px;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #9aa2a9;
+  text-align: center;
+}
+
+.searchEmpty h2 {
+  margin: 13px 0 0;
+  color: var(--text);
+  font-size: 18px;
+  letter-spacing: -0.015em;
+}
+
+.searchEmpty p {
+  max-width: 250px;
+  margin: 7px 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .listState,

@@ -201,6 +201,81 @@ describe('messenger integration', () => {
     expect(screen.queryByText('Загружаем сообщение…')).not.toBeInTheDocument();
   });
 
+  it('filters loaded chats by name, phone number and message preview', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна Иванова',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '10000001',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { chatId: string };
+        const textMessage =
+          body.chatId === '10000000' ? 'Покажи договор' : 'Созвонимся завтра';
+
+        return HttpResponse.json([
+          {
+            type: 'incoming',
+            idMessage: `history-${body.chatId}`,
+            timestamp: 1763115120,
+            typeMessage: 'textMessage',
+            chatId: body.chatId,
+            textMessage,
+          },
+        ]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const search = screen.getByRole('searchbox', { name: 'Найти чат' });
+    const annaChat = await screen.findByRole('button', { name: /Анна Иванова/ });
+    await within(annaChat).findByText('Покажи договор', {}, { timeout: 3_000 });
+
+    await user.type(search, 'анна');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Очистить поиск' }));
+    await user.type(search, '8 (987) 654-32-10');
+
+    expect(screen.queryByRole('button', { name: /Анна Иванова/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Сергей/ })).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, '+7 999 123');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'ДОГОВОР');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'несуществующий чат');
+
+    expect(screen.getByRole('heading', { name: 'Ничего не найдено' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Сбросить поиск' }));
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Сергей/ })).toBeInTheDocument();
+  });
+
   it('loads older messages on demand', async () => {
     const history = Array.from({ length: 101 }, (_, index) => {
       const messageNumber = 101 - index;

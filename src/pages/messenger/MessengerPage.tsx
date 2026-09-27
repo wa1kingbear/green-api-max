@@ -6,8 +6,9 @@ import {
   SignOutIcon,
   UserCircleIcon,
   WarningCircleIcon,
+  XIcon,
 } from '@phosphor-icons/react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
@@ -72,6 +73,42 @@ function getChatPreview(chat: { lastMessage?: string; previewStatus?: string }) 
   return 'Сообщений пока нет';
 }
 
+function chatMatchesSearch(
+  chat: {
+    chatId: string;
+    displayName: string;
+    phoneNumber: string;
+    lastMessage?: string;
+  },
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const queryDigits = query.replace(/\D/g, '');
+  const phoneDigits = chat.phoneNumber.replace(/\D/g, '');
+  const phoneSearchVariants = [queryDigits];
+
+  if (queryDigits.length > 1 && queryDigits.startsWith('8')) {
+    phoneSearchVariants.push(`7${queryDigits.slice(1)}`);
+  }
+
+  if (queryDigits.length > 1 && queryDigits.startsWith('7')) {
+    phoneSearchVariants.push(`8${queryDigits.slice(1)}`);
+  }
+
+  return (
+    chat.displayName.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    chat.lastMessage?.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    chat.chatId.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    (queryDigits.length > 0 &&
+      phoneSearchVariants.some((phoneQuery) => phoneDigits.includes(phoneQuery)))
+  );
+}
+
 export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
@@ -82,8 +119,14 @@ export function MessengerPage() {
     useLoadChatHistory();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
+  const [searchQuery, setSearchQuery] = useState('');
   const newChatTriggerRef = useRef<HTMLElement | null>(null);
   const isConnectionDegraded = state.connection === 'degraded';
+  const filteredChats = useMemo(
+    () => state.chats.filter((chat) => chatMatchesSearch(chat, searchQuery)),
+    [searchQuery, state.chats],
+  );
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   const openNewChatDialog = () => {
     newChatTriggerRef.current =
@@ -151,49 +194,94 @@ export function MessengerPage() {
             </IconButton>
           </header>
 
-          <label className={styles.search}>
+          <div className={styles.search}>
             <MagnifyingGlassIcon size={21} aria-hidden="true" />
-            <span className={styles.visuallyHidden}>Найти чат</span>
-            <input disabled placeholder="Найти" type="search" />
-          </label>
+            <label className={styles.visuallyHidden} htmlFor="chat-search">
+              Найти чат
+            </label>
+            <input
+              aria-controls="chat-list"
+              autoComplete="off"
+              disabled={state.chats.length === 0}
+              id="chat-search"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && searchQuery) {
+                  setSearchQuery('');
+                }
+              }}
+              placeholder="Найти"
+              type="search"
+              value={searchQuery}
+            />
+            {hasSearchQuery && (
+              <button
+                aria-label="Очистить поиск"
+                className={styles.searchClear}
+                onClick={() => setSearchQuery('')}
+                type="button"
+              >
+                <XIcon size={17} weight="bold" />
+              </button>
+            )}
+          </div>
 
           {state.chats.length > 0 ? (
-            <section className={styles.chatList} aria-label="Список чатов">
-              {state.chats.map((chat) => (
+            filteredChats.length > 0 ? (
+              <section
+                className={styles.chatList}
+                id="chat-list"
+                aria-label="Список чатов"
+              >
+                {filteredChats.map((chat) => (
+                  <button
+                    aria-current={
+                      state.activeChat?.chatId === chat.chatId ? 'page' : undefined
+                    }
+                    className={`${styles.chatItem} ${
+                      state.activeChat?.chatId === chat.chatId
+                        ? styles.chatItemActive
+                        : ''
+                    }`}
+                    key={chat.chatId}
+                    onClick={() => openChat(chat)}
+                    type="button"
+                  >
+                    <ChatAvatar
+                      avatarStatus={chat.avatarStatus}
+                      avatarUrl={chat.avatarUrl}
+                      className={styles.chatAvatar}
+                      iconSize={42}
+                      lazy
+                    />
+                    <span className={styles.chatSummary}>
+                      <strong>{chat.displayName}</strong>
+                      {chat.previewStatus === 'loading' && !chat.lastMessage ? (
+                        <span
+                          aria-label="Загружается последнее сообщение"
+                          className={styles.chatPreviewSkeleton}
+                        />
+                      ) : (
+                        <span>{getChatPreview(chat)}</span>
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </section>
+            ) : (
+              <section className={styles.searchEmpty} role="status">
+                <MagnifyingGlassIcon size={34} aria-hidden="true" />
+                <h2>Ничего не найдено</h2>
+                <p>Попробуйте изменить имя или номер телефона.</p>
                 <button
-                  aria-current={
-                    state.activeChat?.chatId === chat.chatId ? 'page' : undefined
-                  }
-                  className={`${styles.chatItem} ${
-                    state.activeChat?.chatId === chat.chatId
-                      ? styles.chatItemActive
-                      : ''
-                  }`}
-                  key={chat.chatId}
-                  onClick={() => openChat(chat)}
+                  className={styles.secondaryButton}
+                  onClick={() => setSearchQuery('')}
                   type="button"
                 >
-                  <ChatAvatar
-                    avatarStatus={chat.avatarStatus}
-                    avatarUrl={chat.avatarUrl}
-                    className={styles.chatAvatar}
-                    iconSize={42}
-                    lazy
-                  />
-                  <span className={styles.chatSummary}>
-                    <strong>{chat.displayName}</strong>
-                    {chat.previewStatus === 'loading' && !chat.lastMessage ? (
-                      <span
-                        aria-label="Загружается последнее сообщение"
-                        className={styles.chatPreviewSkeleton}
-                      />
-                    ) : (
-                      <span>{getChatPreview(chat)}</span>
-                    )}
-                  </span>
+                  Сбросить поиск
                 </button>
-              ))}
-            </section>
+              </section>
+            )
           ) : state.chatsStatus === 'loading' ? (
             <section
               className={styles.listState}
