@@ -9,7 +9,12 @@ export interface Chat {
   chatId: string;
   phoneNumber: string;
   displayName: string;
+  lastMessage?: string;
+  lastMessageTimestamp?: number;
+  previewStatus?: LoadingStatus;
 }
+
+export type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export type MessageDirection = 'incoming' | 'outgoing';
 export type MessageStatus = 'sending' | 'sent' | 'failed';
@@ -33,15 +38,37 @@ export interface AppError {
 export interface AppState {
   connection: ConnectionStatus;
   credentials: Credentials | null;
+  chats: Chat[];
+  chatsStatus: LoadingStatus;
+  chatsError: AppError | null;
   activeChat: Chat | null;
   messages: Message[];
+  historyStatus: LoadingStatus;
+  historyError: AppError | null;
   processedMessageIds: Set<string>;
   pollingError: AppError | null;
 }
 
 export type AppAction =
   | { type: 'connect'; payload: Credentials }
+  | { type: 'chats-loading' }
+  | { type: 'chats-loaded'; payload: Chat[] }
+  | { type: 'chats-failed'; payload: AppError }
+  | {
+      type: 'chat-preview-loaded';
+      payload: { chatId: string; message: Message | null };
+    }
+  | { type: 'chat-preview-failed'; payload: { chatId: string } }
   | { type: 'open-chat'; payload: Chat }
+  | { type: 'history-loading'; payload: { chatId: string } }
+  | {
+      type: 'history-loaded';
+      payload: { chatId: string; messages: Message[] };
+    }
+  | {
+      type: 'history-failed';
+      payload: { chatId: string; error: AppError };
+    }
   | { type: 'add-message'; payload: Message }
   | { type: 'receive-message'; payload: Message }
   | {
@@ -57,8 +84,13 @@ export type AppAction =
 export const initialAppState: AppState = {
   connection: 'disconnected',
   credentials: null,
+  chats: [],
+  chatsStatus: 'idle',
+  chatsError: null,
   activeChat: null,
   messages: [],
+  historyStatus: 'idle',
+  historyError: null,
   processedMessageIds: new Set(),
   pollingError: null,
 };

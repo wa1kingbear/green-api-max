@@ -44,6 +44,38 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
       return;
     }
 
+    if (pathname === `${instancePath}/getChats/${apiTokenInstance}`) {
+      await fulfillJson(route, [
+        {
+          chatId: '20000000',
+          name: 'Анна',
+          type: 'user',
+          phoneNumber: 79990000000,
+        },
+      ]);
+      return;
+    }
+
+    if (pathname === `${instancePath}/getChatHistory/${apiTokenInstance}`) {
+      const body = request.postDataJSON() as { chatId?: string } | null;
+      await fulfillJson(
+        route,
+        body?.chatId === '20000000'
+          ? [
+              {
+                type: 'incoming',
+                idMessage: 'history-1',
+                timestamp: 1763115000,
+                chatId: '20000000',
+                typeMessage: 'textMessage',
+                textMessage: 'Сообщение из истории',
+              },
+            ]
+          : [],
+      );
+      return;
+    }
+
     if (pathname === `${instancePath}/checkAccount/${apiTokenInstance}`) {
       checkAccountBody = request.postDataJSON();
       await fulfillJson(route, {
@@ -110,6 +142,13 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Чаты', exact: true })).toBeVisible();
+
+  const existingChat = page.getByRole('button', { name: /Анна/ });
+  await expect(existingChat.getByText('Сообщение из истории')).toBeVisible();
+  await existingChat.click();
+  await expect(
+    page.getByRole('region', { name: 'Переписка' }).getByText('Сообщение из истории'),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Новый чат' }).first().click();
   await page.getByLabel('Номер телефона').fill('+7 (999) 123-45-67');

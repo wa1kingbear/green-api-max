@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 
-import type { Chat } from '../../../app/model';
 import { useApp } from '../../../app/useApp';
 import { deleteNotification } from '../../../shared/api/deleteNotification';
 import { receiveNotification } from '../../../shared/api/receiveNotification';
@@ -11,12 +10,7 @@ const RECEIVE_TIMEOUT_SECONDS = 10;
 
 export function useReceiveMessages() {
   const { state, dispatch } = useApp();
-  const activeChatRef = useRef<Chat | null>(state.activeChat);
   const processedMessageIdsRef = useRef(state.processedMessageIds);
-
-  useEffect(() => {
-    activeChatRef.current = state.activeChat;
-  }, [state.activeChat]);
 
   useEffect(() => {
     processedMessageIdsRef.current = state.processedMessageIds;
@@ -42,14 +36,8 @@ export function useReceiveMessages() {
           deleteNotification({ credentials, receiptId, signal: requestSignal }),
         onNotification: (body) => {
           const message = parseIncomingTextMessage(body);
-          const activeChat = activeChatRef.current;
 
-          if (
-            !message ||
-            !activeChat ||
-            message.chatId !== activeChat.chatId ||
-            processedMessageIdsRef.current.has(message.id)
-          ) {
+          if (!message || processedMessageIdsRef.current.has(message.id)) {
             return;
           }
 

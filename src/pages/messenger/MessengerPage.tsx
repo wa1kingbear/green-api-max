@@ -12,6 +12,8 @@ import { useRef, useState } from 'react';
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
 import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
+import { useLoadChatHistory } from '../../features/load-chat-history/model/useLoadChatHistory';
+import { useLoadChats } from '../../features/load-chats/model/useLoadChats';
 import { useReceiveMessages } from '../../features/receive-messages/model/useReceiveMessages';
 import { useSendMessage } from '../../features/send-message/model/useSendMessage';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
@@ -19,15 +21,32 @@ import { MessageComposer } from '../../widgets/message-composer/MessageComposer'
 import { MessageList } from '../../widgets/message-list/MessageList';
 import styles from './MessengerPage.module.css';
 
+function getChatPreview(chat: { lastMessage?: string; previewStatus?: string }) {
+  if (chat.lastMessage) {
+    return chat.lastMessage;
+  }
+
+  if (chat.previewStatus === 'loading') {
+    return 'Загружаем сообщение…';
+  }
+
+  if (chat.previewStatus === 'error') {
+    return 'Не удалось загрузить сообщение';
+  }
+
+  return 'Сообщений пока нет';
+}
+
 export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
   const { sendMessage, retryMessage } = useSendMessage();
   useReceiveMessages();
+  const { reloadChats } = useLoadChats();
+  const { reloadHistory } = useLoadChatHistory();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
   const newChatTriggerRef = useRef<HTMLElement | null>(null);
-  const latestMessage = state.messages.at(-1);
   const isConnectionDegraded = state.connection === 'degraded';
 
   const openNewChatDialog = () => {
@@ -44,6 +63,11 @@ export function MessengerPage() {
   const handleCreateChat = async (phoneNumber: string) => {
     await createChat(phoneNumber);
     newChatTriggerRef.current = null;
+    setIsMobileChatOpen(true);
+  };
+
+  const openChat = (chat: (typeof state.chats)[number]) => {
+    dispatch({ type: 'open-chat', payload: chat });
     setIsMobileChatOpen(true);
   };
 
@@ -97,20 +121,49 @@ export function MessengerPage() {
             <input disabled placeholder="Найти" type="search" />
           </label>
 
-          {state.activeChat ? (
+          {state.chats.length > 0 ? (
             <section className={styles.chatList} aria-label="Список чатов">
+              {state.chats.map((chat) => (
+                <button
+                  aria-current={
+                    state.activeChat?.chatId === chat.chatId ? 'page' : undefined
+                  }
+                  className={`${styles.chatItem} ${
+                    state.activeChat?.chatId === chat.chatId
+                      ? styles.chatItemActive
+                      : ''
+                  }`}
+                  key={chat.chatId}
+                  onClick={() => openChat(chat)}
+                  type="button"
+                >
+                  <span className={styles.chatAvatar} aria-hidden="true">
+                    <UserCircleIcon size={42} weight="fill" />
+                  </span>
+                  <span className={styles.chatSummary}>
+                    <strong>{chat.displayName}</strong>
+                    <span>{getChatPreview(chat)}</span>
+                  </span>
+                </button>
+              ))}
+            </section>
+          ) : state.chatsStatus === 'loading' ? (
+            <section className={styles.listState} aria-label="Список чатов" role="status">
+              <span className={styles.loadingDot} aria-hidden="true" />
+              <h2>Загружаем чаты</h2>
+              <p>Получаем список диалогов из MAX.</p>
+            </section>
+          ) : state.chatsStatus === 'error' ? (
+            <section className={styles.listState} aria-label="Список чатов">
+              <WarningCircleIcon size={42} weight="fill" aria-hidden="true" />
+              <h2>Не удалось загрузить чаты</h2>
+              <p>{state.chatsError?.message}</p>
               <button
-                className={styles.chatItem}
-                onClick={() => setIsMobileChatOpen(true)}
+                className={styles.secondaryButton}
+                onClick={reloadChats}
                 type="button"
               >
-                <span className={styles.chatAvatar} aria-hidden="true">
-                  <UserCircleIcon size={42} weight="fill" />
-                </span>
-                <span className={styles.chatSummary}>
-                  <strong>{state.activeChat.displayName}</strong>
-                  <span>{latestMessage?.text ?? 'Чат создан'}</span>
-                </span>
+                Повторить
               </button>
             </section>
           ) : (
@@ -171,7 +224,28 @@ export function MessengerPage() {
                   </span>
                 </div>
               )}
-              <MessageList messages={state.messages} onRetry={retryMessage} />
+              {state.historyStatus === 'loading' && state.messages.length === 0 ? (
+                <div className={styles.historyState} role="status">
+                  <span className={styles.loadingDot} aria-hidden="true" />
+                  <h2>Загружаем переписку</h2>
+                  <p>Получаем последние сообщения из MAX.</p>
+                </div>
+              ) : state.historyStatus === 'error' && state.messages.length === 0 ? (
+                <div className={styles.historyState}>
+                  <WarningCircleIcon size={42} weight="fill" aria-hidden="true" />
+                  <h2>Не удалось загрузить переписку</h2>
+                  <p>{state.historyError?.message}</p>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={reloadHistory}
+                    type="button"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : (
+                <MessageList messages={state.messages} onRetry={retryMessage} />
+              )}
               <MessageComposer onSend={sendMessage} />
             </>
           ) : (

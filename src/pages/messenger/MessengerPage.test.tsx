@@ -8,6 +8,8 @@ import { AppProvider } from '../../app/AppProvider';
 import { GREEN_API_BASE_URL } from '../../shared/config/environment';
 
 const checkAccountEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/checkAccount/test-token`;
+const getChatsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChats/test-token`;
+const getChatHistoryEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChatHistory/test-token`;
 const getSettingsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getSettings/test-token`;
 const sendMessageEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/sendMessage/test-token`;
 const receiveNotificationEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/receiveNotification/test-token`;
@@ -16,6 +18,8 @@ const server = setupServer(
   http.get(getSettingsEndpoint, () =>
     HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
   ),
+  http.get(getChatsEndpoint, () => HttpResponse.json([])),
+  http.post(getChatHistoryEndpoint, () => HttpResponse.json([])),
   http.get(receiveNotificationEndpoint, async () => {
     await delay('infinite');
   }),
@@ -87,6 +91,73 @@ function incomingTextNotification({
 }
 
 describe('messenger integration', () => {
+  it('loads personal chats and the selected chat history', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '-10000000',
+            name: 'Рабочая группа',
+            type: 'group',
+            phoneNumber: 0,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = await request.json();
+
+        expect(body).toEqual(
+          expect.objectContaining({ chatId: '10000000' }),
+        );
+
+        const messages = [
+          {
+            type: 'incoming',
+            idMessage: 'history-2',
+            timestamp: 1763115120,
+            typeMessage: 'textMessage',
+            chatId: '10000000',
+            textMessage: 'Новое сообщение',
+          },
+          {
+            type: 'outgoing',
+            idMessage: 'history-1',
+            timestamp: 1763115110,
+            statusMessage: 'sent',
+            typeMessage: 'textMessage',
+            chatId: '10000000',
+            textMessage: 'Старое сообщение',
+          },
+        ];
+
+        return HttpResponse.json(
+          (body as { count?: number }).count === 1 ? messages.slice(0, 1) : messages,
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Анна/ });
+    expect(screen.queryByText('Рабочая группа')).not.toBeInTheDocument();
+    expect(await within(chat).findByText('Новое сообщение')).toBeInTheDocument();
+
+    await user.click(chat);
+
+    const messages = await screen.findByLabelText('Сообщения');
+    const articles = within(messages).getAllByRole('article');
+    expect(articles).toHaveLength(2);
+    expect(articles[0]).toHaveTextContent('Старое сообщение');
+    expect(articles[1]).toHaveTextContent('Новое сообщение');
+  });
+
   it('shows only navigation available in the MVP', async () => {
     const user = userEvent.setup();
     renderApp();
@@ -319,7 +390,7 @@ describe('creating a chat', () => {
     expect(
       await screen.findByRole('heading', { name: '+7 999 123-45-67' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Начните переписку')).toBeInTheDocument();
+    expect(await screen.findByText('Начните переписку')).toBeInTheDocument();
   });
 
   it('shows an error when the MAX account does not exist', async () => {
