@@ -183,8 +183,8 @@ export function ConnectionPage() {
         <div className={styles.privacyNote}>
           <LockKeyIcon size={19} weight="fill" aria-hidden="true" />
           <p>
-            Данные остаются только в памяти вкладки и удаляются после отключения или
-            перезагрузки страницы.
+            Данные сохраняются в этом браузере и удаляются после выхода из
+            приложения. Не подключайтесь на чужом устройстве.
           </p>
         </div>
 

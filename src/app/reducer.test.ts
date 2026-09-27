@@ -2,7 +2,7 @@ import { appReducer } from './reducer';
 import { initialAppState } from './model';
 
 describe('appReducer', () => {
-  it('keeps credentials only in memory while connected', () => {
+  it('sets credentials while connected', () => {
     const credentials = {
       idInstance: '1101000001',
       apiTokenInstance: 'test-token',

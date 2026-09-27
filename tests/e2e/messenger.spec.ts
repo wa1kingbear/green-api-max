@@ -102,6 +102,14 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
   await page.getByRole('button', { name: 'Подключиться' }).click();
 
   await expect(page.getByRole('heading', { name: 'Чаты', exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.localStorage.getItem('selectedInstance')),
+    )
+    .toBe(JSON.stringify({ idInstance, apiTokenInstance }));
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Чаты', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Новый чат' }).first().click();
   await page.getByLabel('Номер телефона').fill('+7 (999) 123-45-67');
@@ -120,4 +128,14 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
 
   expect(checkAccountBody).toEqual({ phoneNumber: 79991234567 });
   expect(sendMessageBody).toEqual({ chatId: '10000000', message: 'Привет' });
+
+  await page.getByRole('button', { name: 'Выйти' }).first().click();
+  await expect(
+    page.getByRole('heading', { name: 'Подключите GREEN-API' }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.localStorage.getItem('selectedInstance')),
+    )
+    .toBeNull();
 });
