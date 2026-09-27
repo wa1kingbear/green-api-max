@@ -8,5 +8,10 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "eslint.config.js"]
+  "include": [
+    "vite.config.ts",
+    "playwright.config.ts",
+    "tests/e2e/**/*.ts",
+    "eslint.config.js"
+  ]
 }

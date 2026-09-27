@@ -7,6 +7,8 @@ import {
 import { type SyntheticEvent, useState } from 'react';
 
 import { useApp } from '../../app/useApp';
+import { getSettings } from '../../shared/api/getSettings';
+import { isGreenApiError } from '../../shared/api/greenApiError';
 import styles from './ConnectionPage.module.css';
 
 interface FormErrors {
@@ -36,23 +38,57 @@ export function ConnectionPage() {
   const [apiTokenInstance, setApiTokenInstance] = useState('');
   const [isTokenVisible, setIsTokenVisible] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [settingsIssues, setSettingsIssues] = useState<string[]>([]);
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  const handleSubmit = (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
+  const handleSubmit = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
     const nextErrors = validate(idInstance, apiTokenInstance);
     setErrors(nextErrors);
+    setConnectionError(null);
+    setSettingsIssues([]);
 
     if (Object.keys(nextErrors).length > 0) {
       return;
     }
 
-    dispatch({
-      type: 'connect',
-      payload: {
-        idInstance: idInstance.trim(),
-        apiTokenInstance: apiTokenInstance.trim(),
-      },
-    });
+    const credentials = {
+      idInstance: idInstance.trim(),
+      apiTokenInstance: apiTokenInstance.trim(),
+    };
+
+    setIsConnecting(true);
+
+    try {
+      const settings = await getSettings({ credentials });
+      const issues: string[] = [];
+
+      if (settings.incomingWebhook !== 'yes') {
+        issues.push(
+          'Включите «Получать уведомления о входящих сообщениях и файлах» в настройках инстанса GREEN-API.',
+        );
+      }
+
+      if (settings.webhookUrl.trim()) {
+        issues.push('Для HTTP API очистите webhookUrl в настройках инстанса.');
+      }
+
+      if (issues.length > 0) {
+        setSettingsIssues(issues);
+        return;
+      }
+
+      dispatch({ type: 'connect', payload: credentials });
+    } catch (error) {
+      setConnectionError(
+        isGreenApiError(error)
+          ? error.message
+          : 'Не удалось проверить настройки инстанса. Попробуйте ещё раз.',
+      );
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   return (
@@ -121,8 +157,26 @@ export function ConnectionPage() {
             )}
           </label>
 
-          <button className={styles.submitButton} type="submit">
-            Подключиться
+          {(connectionError || settingsIssues.length > 0) && (
+            <div className={styles.connectionError} role="alert">
+              {connectionError ? (
+                <p>{connectionError}</p>
+              ) : (
+                <>
+                  <p>Проверьте настройки инстанса:</p>
+                  <ul>
+                    {settingsIssues.map((issue) => (
+                      <li key={issue}>{issue}</li>
+                    ))}
+                  </ul>
+                  <p>После исправления повторите подключение.</p>
+                </>
+              )}
+            </div>
+          )}
+
+          <button className={styles.submitButton} disabled={isConnecting} type="submit">
+            {isConnecting ? 'Проверяем настройки…' : 'Подключиться'}
           </button>
         </form>
 

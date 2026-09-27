@@ -1,0 +1,106 @@
+.wrapper {
+  flex: 0 0 auto;
+  padding: 12px 22px max(16px, env(safe-area-inset-bottom));
+}
+
+.composer {
+  display: flex;
+  width: min(100%, 820px);
+  min-height: 56px;
+  margin: 0 auto;
+  padding: 6px 7px 6px 18px;
+  gap: 10px;
+  align-items: flex-end;
+  background: #fff;
+  border: 1px solid rgb(19 42 61 / 8%);
+  border-radius: 20px;
+  box-shadow: 0 10px 28px rgb(31 100 141 / 14%);
+}
+
+.inputArea {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 42px;
+  flex: 1;
+  align-items: center;
+}
+
+.inputArea textarea {
+  width: 100%;
+  max-height: 132px;
+  padding: 10px 58px 9px 0;
+  resize: none;
+  overflow-y: auto;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: none;
+  field-sizing: content;
+  line-height: 1.35;
+}
+
+.inputArea textarea::placeholder {
+  color: #959ba0;
+}
+
+.counter {
+  position: absolute;
+  right: 2px;
+  bottom: 10px;
+  color: #969ca2;
+  font-size: 11px;
+}
+
+.sendButton {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0 2px 0 0;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 50%;
+  transition:
+    background-color 150ms ease,
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendButton:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.sendButton:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 768px) {
+  .wrapper {
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .composer {
+    min-height: 54px;
+    padding-left: 16px;
+    border-radius: 19px;
+  }
+}

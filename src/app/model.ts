@@ -23,17 +23,36 @@ export interface Message {
   status: MessageStatus;
 }
 
+export interface AppError {
+  code: string;
+  message: string;
+  retryable: boolean;
+  httpStatus?: number;
+}
+
 export interface AppState {
   connection: ConnectionStatus;
   credentials: Credentials | null;
   activeChat: Chat | null;
   messages: Message[];
   processedMessageIds: Set<string>;
-  pollingError: null;
+  pollingError: AppError | null;
 }
 
 export type AppAction =
-  { type: 'connect'; payload: Credentials } | { type: 'disconnect' };
+  | { type: 'connect'; payload: Credentials }
+  | { type: 'open-chat'; payload: Chat }
+  | { type: 'add-message'; payload: Message }
+  | { type: 'receive-message'; payload: Message }
+  | {
+      type: 'message-sent';
+      payload: { temporaryId: string; idMessage: string };
+    }
+  | { type: 'message-failed'; payload: { id: string } }
+  | { type: 'message-retrying'; payload: { id: string } }
+  | { type: 'polling-degraded'; payload: AppError }
+  | { type: 'polling-recovered' }
+  | { type: 'disconnect' };
 
 export const initialAppState: AppState = {
   connection: 'disconnected',
