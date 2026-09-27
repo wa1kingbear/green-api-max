@@ -1,0 +1,203 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    if: >-
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+
+    steps:
+      - name: Checkout deployment commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 10.27.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production bundle
+        run: pnpm build
+
+      - name: Validate deployment settings
+        run: |
+          set -Eeuo pipefail
+
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$VPS_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$VPS_PORT" =~ ^[0-9]{1,5}$ ]]
+          [[ "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          [[ "$DEPLOY_PATH" != "/" ]]
+          [[ "$PRODUCTION_URL" =~ ^https?://[A-Za-z0-9.:-]+$ ]]
+
+      - name: Prepare SSH
+        env:
+          VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+
+          [[ -n "$VPS_SSH_PRIVATE_KEY" ]]
+          [[ -n "$VPS_KNOWN_HOSTS" ]]
+
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+          ssh-keygen -y -f "$HOME/.ssh/deploy_key" >/dev/null
+          ssh-keygen -F "$VPS_HOST" -f "$HOME/.ssh/known_hosts" >/dev/null
+
+      - name: Create release archive
+        run: |
+          set -Eeuo pipefail
+
+          archive_path="$RUNNER_TEMP/$DEPLOY_SHA.tar.gz"
+          tar -C dist -czf "$archive_path" .
+          test -s "$archive_path"
+          printf 'ARCHIVE_PATH=%s\n' "$archive_path" >> "$GITHUB_ENV"
+
+      - name: Upload and activate release
+        id: activate
+        run: |
+          set -Eeuo pipefail
+
+          remote="$VPS_USER@$VPS_HOST"
+          scp_options=(
+            -i "$HOME/.ssh/deploy_key"
+            -P "$VPS_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          ssh_options=(
+            -i "$HOME/.ssh/deploy_key"
+            -p "$VPS_PORT"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+
+          scp "${scp_options[@]}" \
+            "$ARCHIVE_PATH" \
+            "$remote:$DEPLOY_PATH/incoming/$DEPLOY_SHA.tar.gz"
+
+          ssh "${ssh_options[@]}" "$remote" \
+            /usr/local/bin/green-api-release activate \
+            "$DEPLOY_PATH" \
+            "$DEPLOY_SHA" \
+            "$DEPLOY_PATH/incoming/$DEPLOY_SHA.tar.gz"
+
+      - name: Verify deployed site
+        id: health
+        run: |
+          set -Eeuo pipefail
+
+          curl --fail --silent --show-error \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-connrefused \
+            "$PRODUCTION_URL/healthz"
+
+          curl --fail --silent --show-error \
+            --retry 5 \
+            --retry-delay 2 \
+            --retry-connrefused \
+            --output /dev/null \
+            "$PRODUCTION_URL/"
+
+      - name: Roll back failed release
+        if: >-
+          ${{ failure() &&
+          steps.activate.outcome == 'success' &&
+          steps.health.outcome == 'failure' }}
+        run: |
+          set -Eeuo pipefail
+
+          ssh \
+            -i "$HOME/.ssh/deploy_key" \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            /usr/local/bin/green-api-release rollback "$DEPLOY_PATH"
+
+      - name: Prune old releases
+        run: |
+          set -Eeuo pipefail
+
+          ssh \
+            -i "$HOME/.ssh/deploy_key" \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            /usr/local/bin/green-api-release prune "$DEPLOY_PATH" 5
+
+      - name: Clean up deployment credentials
+        if: always()
+        run: |
+          if [[ -f "$HOME/.ssh/deploy_key" &&
+                "$VPS_HOST" =~ ^[A-Za-z0-9.-]+$ &&
+                "$VPS_PORT" =~ ^[0-9]{1,5}$ &&
+                "$VPS_USER" =~ ^[a-z_][a-z0-9_-]*$ &&
+                "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ &&
+                "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            ssh \
+              -i "$HOME/.ssh/deploy_key" \
+              -p "$VPS_PORT" \
+              -o BatchMode=yes \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              "$VPS_USER@$VPS_HOST" \
+              rm -f -- "$DEPLOY_PATH/incoming/$DEPLOY_SHA.tar.gz" || true
+          fi
+
+          rm -f -- "$HOME/.ssh/deploy_key"
