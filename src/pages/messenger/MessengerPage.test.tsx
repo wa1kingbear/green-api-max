@@ -144,7 +144,7 @@ describe('messenger integration', () => {
 
     const messageList = screen.getByLabelText('Сообщения');
     expect(await within(messageList).findByText('Ответ из MAX')).toBeInTheDocument();
-    expect(within(messageList).getAllByTitle('Отправлено')).toHaveLength(2);
+    expect(within(messageList).getAllByTitle('Отправлено')).toHaveLength(1);
     await waitFor(() =>
       expect(order).toEqual([
         'get-settings',
@@ -416,6 +416,10 @@ describe('receiving messages', () => {
 
     const incomingMessage = await screen.findByRole('article');
     expect(within(incomingMessage).getByText('Ответ из MAX')).toBeInTheDocument();
+    expect(within(incomingMessage).queryByTitle('Отправлено')).not.toBeInTheDocument();
+    expect(
+      within(incomingMessage).queryByRole('button', { name: /повторить/i }),
+    ).not.toBeInTheDocument();
     await waitFor(() => expect(deletedReceiptId).toBe('1234567'));
   });
 

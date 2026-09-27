@@ -40,7 +40,9 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
         {messages.map((message) => (
           <article
             className={`${styles.message} ${styles[message.direction]} ${
-              message.status === 'failed' ? styles.failed : ''
+              message.direction === 'outgoing' && message.status === 'failed'
+                ? styles.failed
+                : ''
             }`}
             key={message.id}
           >
@@ -49,20 +51,20 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
               <time dateTime={new Date(message.timestamp).toISOString()}>
                 {timeFormatter.format(message.timestamp)}
               </time>
-              {message.status === 'sending' && (
+              {message.direction === 'outgoing' && message.status === 'sending' && (
                 <span className={styles.status} title="Отправляется">
                   <ClockCountdownIcon size={15} weight="bold" />
                   <span className={styles.visuallyHidden}>Отправляется</span>
                 </span>
               )}
-              {message.status === 'sent' && (
+              {message.direction === 'outgoing' && message.status === 'sent' && (
                 <span className={styles.status} title="Отправлено">
                   <CheckIcon size={16} weight="bold" />
                   <span className={styles.visuallyHidden}>Отправлено</span>
                 </span>
               )}
             </footer>
-            {message.status === 'failed' && (
+            {message.direction === 'outgoing' && message.status === 'failed' && (
               <button
                 className={styles.retryButton}
                 onClick={() => onRetry(message.id)}
