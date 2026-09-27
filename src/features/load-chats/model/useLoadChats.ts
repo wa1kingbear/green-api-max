@@ -6,7 +6,7 @@ import type {
   ChatDetailsUpdate,
   Credentials,
 } from '../../../app/model';
-import { useApp } from '../../../app/useApp';
+import { useAppDispatch, useSessionState } from '../../../app/useApp';
 import { getAvatar } from '../../../shared/api/getAvatar';
 import { getChatHistory } from '../../../shared/api/getChatHistory';
 import { getChats } from '../../../shared/api/getChats';
@@ -47,7 +47,8 @@ function normalizeError(error: unknown): AppError {
 }
 
 export function useLoadChats() {
-  const { state, dispatch } = useApp();
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
   const [reloadVersion, setReloadVersion] = useState(0);
   const runtimeRef = useRef<ChatDetailsRuntime | null>(null);
   const reloadChats = useCallback(() => setReloadVersion((value) => value + 1), []);
@@ -176,8 +177,6 @@ export function useLoadChats() {
   }, [loadChatPreview]);
 
   useEffect(() => {
-    const credentials = state.credentials;
-
     if (!credentials) {
       return undefined;
     }
@@ -235,7 +234,7 @@ export function useLoadChats() {
       runtime.pendingUpdates.clear();
       runtimeRef.current = null;
     };
-  }, [dispatch, reloadVersion, state.credentials]);
+  }, [credentials, dispatch, reloadVersion]);
 
   return { loadAllChatPreviews, loadChatDetails, reloadChats };
 }

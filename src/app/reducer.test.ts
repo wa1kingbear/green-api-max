@@ -403,6 +403,42 @@ describe('appReducer', () => {
     expect(staleState.messages[0]?.status).toBe('read');
   });
 
+  it('applies a delivery status received before the send response', () => {
+    const sendingState = appReducer(initialAppState, {
+      type: 'add-message',
+      payload: {
+        id: 'temp-1',
+        chatId: 'chat-1',
+        direction: 'outgoing',
+        text: 'Привет',
+        timestamp: 1,
+        status: 'sending',
+      },
+    });
+    const statusReceivedState = appReducer(sendingState, {
+      type: 'message-status-updated',
+      payload: {
+        idMessage: 'message-1',
+        chatId: 'chat-1',
+        status: 'read',
+      },
+    });
+    const sentState = appReducer(statusReceivedState, {
+      type: 'message-sent',
+      payload: { temporaryId: 'temp-1', idMessage: 'message-1' },
+    });
+
+    expect(statusReceivedState.pendingMessageStatuses.get('message-1')).toEqual({
+      chatId: 'chat-1',
+      status: 'read',
+    });
+    expect(sentState.messages[0]).toMatchObject({
+      id: 'message-1',
+      status: 'read',
+    });
+    expect(sentState.pendingMessageStatuses.size).toBe(0);
+  });
+
   it('marks a message as failed and returns it to sending on retry', () => {
     const stateWithMessage = {
       ...initialAppState,

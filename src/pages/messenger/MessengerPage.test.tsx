@@ -766,6 +766,7 @@ describe('creating a chat', () => {
     expect(
       await screen.findByRole('heading', { name: '+7 999 123-45-67' }),
     ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Сообщение')).toHaveFocus());
     expect(
       await screen.findByText('Начните переписку', {}, { timeout: 2_500 }),
     ).toBeInTheDocument();

@@ -50,6 +50,13 @@ export interface AppState {
   historyStatus: LoadingStatus;
   historyError: AppError | null;
   processedMessageIds: Set<string>;
+  pendingMessageStatuses: Map<
+    string,
+    {
+      chatId: string;
+      status: Exclude<MessageStatus, 'sending'>;
+    }
+  >;
   pollingError: AppError | null;
 }
 
@@ -117,5 +124,6 @@ export const initialAppState: AppState = {
   historyStatus: 'idle',
   historyError: null,
   processedMessageIds: new Set(),
+  pendingMessageStatuses: new Map(),
   pollingError: null,
 };

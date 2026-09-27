@@ -11,7 +11,15 @@ import {
   loadSelectedInstance,
   saveSelectedInstance,
 } from '../shared/lib/selectedInstanceStorage';
-import { AppContext } from './appContext';
+import {
+  ActiveChatContext,
+  AppContext,
+  AppDispatchContext,
+  ChatListContext,
+  ConversationContext,
+  ProcessedMessageIdsContext,
+  SessionContext,
+} from './appContext';
 import { type AppAction, type AppState, initialAppState } from './model';
 import { appReducer } from './reducer';
 
@@ -45,6 +53,46 @@ export function AppProvider({ children }: PropsWithChildren) {
     reducerDispatch(action);
   }, []);
   const value = useMemo(() => ({ state, dispatch }), [dispatch, state]);
+  const session = useMemo(
+    () => ({
+      connection: state.connection,
+      credentials: state.credentials,
+      pollingError: state.pollingError,
+    }),
+    [state.connection, state.credentials, state.pollingError],
+  );
+  const chatList = useMemo(
+    () => ({
+      chats: state.chats,
+      chatsStatus: state.chatsStatus,
+      chatsError: state.chatsError,
+    }),
+    [state.chats, state.chatsError, state.chatsStatus],
+  );
+  const conversation = useMemo(
+    () => ({
+      messages: state.messages,
+      historyStatus: state.historyStatus,
+      historyError: state.historyError,
+    }),
+    [state.historyError, state.historyStatus, state.messages],
+  );
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      <AppDispatchContext.Provider value={dispatch}>
+        <SessionContext.Provider value={session}>
+          <ChatListContext.Provider value={chatList}>
+            <ActiveChatContext.Provider value={state.activeChat}>
+              <ConversationContext.Provider value={conversation}>
+                <ProcessedMessageIdsContext.Provider value={state.processedMessageIds}>
+                  {children}
+                </ProcessedMessageIdsContext.Provider>
+              </ConversationContext.Provider>
+            </ActiveChatContext.Provider>
+          </ChatListContext.Provider>
+        </SessionContext.Provider>
+      </AppDispatchContext.Provider>
+    </AppContext.Provider>
+  );
 }
