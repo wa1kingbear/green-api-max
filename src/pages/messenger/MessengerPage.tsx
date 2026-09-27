@@ -21,13 +21,48 @@ import { MessageComposer } from '../../widgets/message-composer/MessageComposer'
 import { MessageList } from '../../widgets/message-list/MessageList';
 import styles from './MessengerPage.module.css';
 
+interface ChatAvatarProps {
+  avatarStatus?: string;
+  avatarUrl?: string;
+  className: string;
+  iconSize: number;
+  lazy?: boolean;
+}
+
+function ChatAvatar({
+  avatarStatus,
+  avatarUrl,
+  className,
+  iconSize,
+  lazy = false,
+}: ChatAvatarProps) {
+  return (
+    <span className={className} aria-hidden="true">
+      {avatarStatus === 'loading' && !avatarUrl ? (
+        <span className={styles.avatarSkeleton} />
+      ) : (
+        <UserCircleIcon size={iconSize} weight="fill" />
+      )}
+      {avatarUrl && (
+        <img
+          alt=""
+          className={styles.avatarImage}
+          decoding="async"
+          loading={lazy ? 'lazy' : 'eager'}
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+          }}
+          referrerPolicy="no-referrer"
+          src={avatarUrl}
+        />
+      )}
+    </span>
+  );
+}
+
 function getChatPreview(chat: { lastMessage?: string; previewStatus?: string }) {
   if (chat.lastMessage) {
     return chat.lastMessage;
-  }
-
-  if (chat.previewStatus === 'loading') {
-    return 'Загружаем сообщение…';
   }
 
   if (chat.previewStatus === 'error') {
@@ -43,7 +78,8 @@ export function MessengerPage() {
   const { sendMessage, retryMessage } = useSendMessage();
   useReceiveMessages();
   const { reloadChats } = useLoadChats();
-  const { reloadHistory } = useLoadChatHistory();
+  const { hasMore, isLoadingMore, loadMoreFailed, loadMoreHistory, reloadHistory } =
+    useLoadChatHistory();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
   const newChatTriggerRef = useRef<HTMLElement | null>(null);
@@ -137,18 +173,33 @@ export function MessengerPage() {
                   onClick={() => openChat(chat)}
                   type="button"
                 >
-                  <span className={styles.chatAvatar} aria-hidden="true">
-                    <UserCircleIcon size={42} weight="fill" />
-                  </span>
+                  <ChatAvatar
+                    avatarStatus={chat.avatarStatus}
+                    avatarUrl={chat.avatarUrl}
+                    className={styles.chatAvatar}
+                    iconSize={42}
+                    lazy
+                  />
                   <span className={styles.chatSummary}>
                     <strong>{chat.displayName}</strong>
-                    <span>{getChatPreview(chat)}</span>
+                    {chat.previewStatus === 'loading' && !chat.lastMessage ? (
+                      <span
+                        aria-label="Загружается последнее сообщение"
+                        className={styles.chatPreviewSkeleton}
+                      />
+                    ) : (
+                      <span>{getChatPreview(chat)}</span>
+                    )}
                   </span>
                 </button>
               ))}
             </section>
           ) : state.chatsStatus === 'loading' ? (
-            <section className={styles.listState} aria-label="Список чатов" role="status">
+            <section
+              className={styles.listState}
+              aria-label="Список чатов"
+              role="status"
+            >
               <span className={styles.loadingDot} aria-hidden="true" />
               <h2>Загружаем чаты</h2>
               <p>Получаем список диалогов из MAX.</p>
@@ -207,9 +258,12 @@ export function MessengerPage() {
                 >
                   <ArrowLeftIcon size={25} weight="bold" />
                 </IconButton>
-                <span className={styles.headerAvatar} aria-hidden="true">
-                  <UserCircleIcon size={38} weight="fill" />
-                </span>
+                <ChatAvatar
+                  avatarStatus={state.activeChat.avatarStatus}
+                  avatarUrl={state.activeChat.avatarUrl}
+                  className={styles.headerAvatar}
+                  iconSize={38}
+                />
                 <div>
                   <h2>{state.activeChat.displayName}</h2>
                   <span>MAX</span>
@@ -244,7 +298,14 @@ export function MessengerPage() {
                   </button>
                 </div>
               ) : (
-                <MessageList messages={state.messages} onRetry={retryMessage} />
+                <MessageList
+                  canLoadMore={hasMore}
+                  isLoadingMore={isLoadingMore}
+                  loadMoreFailed={loadMoreFailed}
+                  messages={state.messages}
+                  onLoadMore={loadMoreHistory}
+                  onRetry={retryMessage}
+                />
               )}
               <MessageComposer onSend={sendMessage} />
             </>
@@ -269,10 +330,7 @@ export function MessengerPage() {
       </main>
 
       {isNewChatOpen && (
-        <NewChatDialog
-          onClose={closeNewChatDialog}
-          onCreate={handleCreateChat}
-        />
+        <NewChatDialog onClose={closeNewChatDialog} onCreate={handleCreateChat} />
       )}
     </>
   );

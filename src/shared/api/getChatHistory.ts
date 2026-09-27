@@ -10,6 +10,70 @@ interface GetChatHistoryParams {
   signal?: AbortSignal;
 }
 
+export interface ChatHistoryPage {
+  messages: Message[];
+  hasMore: boolean;
+}
+
+const HISTORY_REQUEST_INTERVAL_MS = 1_250;
+
+interface HistoryRateLimitState {
+  lastStartedAt: number;
+  tail: Promise<void>;
+}
+
+const historyRateLimits = new Map<string, HistoryRateLimitState>();
+
+function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort);
+      resolve();
+    }, milliseconds);
+
+    function handleAbort() {
+      clearTimeout(timeoutId);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    }
+
+    signal?.addEventListener('abort', handleAbort, { once: true });
+  });
+}
+
+async function waitForHistoryRequestSlot(
+  key: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const rateLimit = historyRateLimits.get(key) ?? {
+    lastStartedAt: 0,
+    tail: Promise.resolve(),
+  };
+  historyRateLimits.set(key, rateLimit);
+
+  const previousRequest = rateLimit.tail;
+  let releaseRequest: () => void = () => undefined;
+  rateLimit.tail = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+
+  await previousRequest;
+
+  try {
+    const remainingDelay = Math.max(
+      0,
+      rateLimit.lastStartedAt + HISTORY_REQUEST_INTERVAL_MS - Date.now(),
+    );
+    await wait(remainingDelay, signal);
+    rateLimit.lastStartedAt = Date.now();
+  } finally {
+    releaseRequest();
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -58,14 +122,16 @@ function createHistoryError(response: Response): GreenApiError {
   });
 }
 
-export async function getChatHistory({
+export async function getChatHistoryPage({
   credentials,
   chatId,
   count = 100,
   apiUrl = GREEN_API_BASE_URL,
   signal,
-}: GetChatHistoryParams): Promise<Message[]> {
+}: GetChatHistoryParams): Promise<ChatHistoryPage> {
   const baseUrl = apiUrl.replace(/\/+$/, '');
+  await waitForHistoryRequestSlot(`${baseUrl}|${credentials.idInstance}`, signal);
+
   const path = [
     `waInstance${encodeURIComponent(credentials.idInstance)}`,
     'getChatHistory',
@@ -114,8 +180,18 @@ export async function getChatHistory({
     });
   }
 
-  return body
-    .map(parseHistoryMessage)
-    .filter((message): message is Message => message !== null)
-    .sort((first, second) => first.timestamp - second.timestamp);
+  return {
+    messages: body
+      .map(parseHistoryMessage)
+      .filter((message): message is Message => message !== null)
+      .sort((first, second) => first.timestamp - second.timestamp),
+    hasMore: body.length >= count,
+  };
+}
+
+export async function getChatHistory(
+  params: GetChatHistoryParams,
+): Promise<Message[]> {
+  const page = await getChatHistoryPage(params);
+  return page.messages;
 }

@@ -7,6 +7,7 @@ export type GreenApiErrorCode =
   | 'message-too-long'
   | 'send-message-failed'
   | 'get-chats-failed'
+  | 'get-avatar-failed'
   | 'get-chat-history-failed'
   | 'get-settings-failed'
   | 'receive-notification-failed'

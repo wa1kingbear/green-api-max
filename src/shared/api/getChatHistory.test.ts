@@ -1,7 +1,7 @@
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 
-import { getChatHistory } from './getChatHistory';
+import { getChatHistory, getChatHistoryPage } from './getChatHistory';
 
 const apiUrl = 'https://test-api.green-api.com';
 const credentials = {
@@ -88,11 +88,68 @@ describe('getChatHistory', () => {
     });
   });
 
+  it('reports more history based on the unfiltered API response size', async () => {
+    server.use(
+      http.post(endpoint, () =>
+        HttpResponse.json([
+          {
+            type: 'incoming',
+            idMessage: 'message-1',
+            timestamp: 10,
+            chatId: '10000000',
+            typeMessage: 'textMessage',
+            textMessage: 'Текст',
+          },
+          {
+            type: 'incoming',
+            idMessage: 'image-1',
+            timestamp: 5,
+            chatId: '10000000',
+            typeMessage: 'imageMessage',
+          },
+        ]),
+      ),
+    );
+
+    await expect(
+      getChatHistoryPage({
+        apiUrl,
+        credentials,
+        chatId: '10000000',
+        count: 2,
+      }),
+    ).resolves.toMatchObject({
+      hasMore: true,
+      messages: [{ id: 'message-1' }],
+    });
+  });
+
   it('rejects an unexpected response', async () => {
     server.use(http.post(endpoint, () => HttpResponse.json({ messages: [] })));
 
     await expect(
       getChatHistory({ apiUrl, credentials, chatId: '10000000' }),
     ).rejects.toMatchObject({ code: 'unexpected-response' });
+  });
+
+  it('spaces concurrent history requests to respect the API rate limit', async () => {
+    const requestStartedAt: number[] = [];
+
+    server.use(
+      http.post(endpoint, () => {
+        requestStartedAt.push(Date.now());
+        return HttpResponse.json([]);
+      }),
+    );
+
+    await Promise.all([
+      getChatHistory({ apiUrl, credentials, chatId: '10000000', count: 1 }),
+      getChatHistory({ apiUrl, credentials, chatId: '10000001', count: 1 }),
+    ]);
+
+    expect(requestStartedAt).toHaveLength(2);
+    expect(requestStartedAt[1]! - requestStartedAt[0]!).toBeGreaterThanOrEqual(
+      1_200,
+    );
   });
 });

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { AppError, Chat } from '../../../app/model';
 import { useApp } from '../../../app/useApp';
+import { getAvatar } from '../../../shared/api/getAvatar';
 import { getChatHistory } from '../../../shared/api/getChatHistory';
 import { getChats } from '../../../shared/api/getChats';
 import { isGreenApiError } from '../../../shared/api/greenApiError';
 import { formatPhoneNumber } from '../../create-chat/model/phone';
 
-const PREVIEW_REQUEST_CONCURRENCY = 3;
+const PREVIEW_REQUEST_CONCURRENCY = 1;
+const AVATAR_REQUEST_CONCURRENCY = 1;
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -59,6 +61,7 @@ export function useLoadChats() {
             displayName:
               chat.name.trim() ||
               (chat.phoneNumber ? formatPhoneNumber(chat.phoneNumber) : 'Чат MAX'),
+            avatarStatus: 'loading',
             previewStatus: 'loading',
           }));
 
@@ -103,8 +106,48 @@ export function useLoadChats() {
         };
 
         const workerCount = Math.min(PREVIEW_REQUEST_CONCURRENCY, chats.length);
+        void Promise.all(Array.from({ length: workerCount }, () => loadNextPreview()));
+
+        let nextAvatarIndex = 0;
+
+        const loadNextAvatar = async () => {
+          while (!controller.signal.aborted) {
+            const chat = chats[nextAvatarIndex];
+            nextAvatarIndex += 1;
+
+            if (!chat) {
+              return;
+            }
+
+            try {
+              const avatarUrl = await getAvatar({
+                credentials,
+                chatId: chat.chatId,
+                signal: controller.signal,
+              });
+
+              if (!controller.signal.aborted) {
+                dispatch({
+                  type: 'chat-avatar-loaded',
+                  payload: { chatId: chat.chatId, avatarUrl },
+                });
+              }
+            } catch (error: unknown) {
+              if (controller.signal.aborted || isAbortError(error)) {
+                return;
+              }
+
+              dispatch({
+                type: 'chat-avatar-failed',
+                payload: { chatId: chat.chatId },
+              });
+            }
+          }
+        };
+
+        const avatarWorkerCount = Math.min(AVATAR_REQUEST_CONCURRENCY, chats.length);
         void Promise.all(
-          Array.from({ length: workerCount }, () => loadNextPreview()),
+          Array.from({ length: avatarWorkerCount }, () => loadNextAvatar()),
         );
       })
       .catch((error: unknown) => {

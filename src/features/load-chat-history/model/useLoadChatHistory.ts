@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AppError } from '../../../app/model';
 import { useApp } from '../../../app/useApp';
-import { getChatHistory } from '../../../shared/api/getChatHistory';
+import { getChatHistoryPage } from '../../../shared/api/getChatHistory';
 import { isGreenApiError } from '../../../shared/api/greenApiError';
+
+const HISTORY_PAGE_SIZE = 100;
+
+interface HistoryPaginationState {
+  chatId: string | null;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMoreFailed: boolean;
+}
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -29,6 +38,14 @@ function normalizeError(error: unknown): AppError {
 export function useLoadChatHistory() {
   const { state, dispatch } = useApp();
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [pagination, setPagination] = useState<HistoryPaginationState>({
+    chatId: null,
+    hasMore: false,
+    isLoadingMore: false,
+    loadMoreFailed: false,
+  });
+  const loadedCountRef = useRef(HISTORY_PAGE_SIZE);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
   const reloadHistory = useCallback(
     () => setReloadVersion((value) => value + 1),
     [],
@@ -43,12 +60,28 @@ export function useLoadChatHistory() {
     }
 
     const controller = new AbortController();
+    loadMoreControllerRef.current?.abort();
+    loadedCountRef.current = HISTORY_PAGE_SIZE;
     dispatch({ type: 'history-loading', payload: { chatId } });
 
-    void getChatHistory({ credentials, chatId, signal: controller.signal })
-      .then((messages) => {
+    void getChatHistoryPage({
+      credentials,
+      chatId,
+      count: HISTORY_PAGE_SIZE,
+      signal: controller.signal,
+    })
+      .then((page) => {
         if (!controller.signal.aborted) {
-          dispatch({ type: 'history-loaded', payload: { chatId, messages } });
+          dispatch({
+            type: 'history-loaded',
+            payload: { chatId, messages: page.messages },
+          });
+          setPagination({
+            chatId,
+            hasMore: page.hasMore,
+            isLoadingMore: false,
+            loadMoreFailed: false,
+          });
         }
       })
       .catch((error: unknown) => {
@@ -60,8 +93,85 @@ export function useLoadChatHistory() {
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+    };
   }, [dispatch, reloadVersion, state.activeChat?.chatId, state.credentials]);
 
-  return { reloadHistory };
+  const loadMoreHistory = useCallback(() => {
+    const credentials = state.credentials;
+    const chatId = state.activeChat?.chatId;
+
+    if (
+      !credentials ||
+      !chatId ||
+      pagination.chatId !== chatId ||
+      !pagination.hasMore ||
+      pagination.isLoadingMore
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const nextCount = loadedCountRef.current + HISTORY_PAGE_SIZE;
+    loadMoreControllerRef.current = controller;
+    setPagination((current) => ({
+      ...current,
+      isLoadingMore: true,
+      loadMoreFailed: false,
+    }));
+
+    void getChatHistoryPage({
+      credentials,
+      chatId,
+      count: nextCount,
+      signal: controller.signal,
+    })
+      .then((page) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        loadedCountRef.current = nextCount;
+        dispatch({
+          type: 'history-loaded',
+          payload: { chatId, messages: page.messages },
+        });
+        setPagination({
+          chatId,
+          hasMore: page.hasMore,
+          isLoadingMore: false,
+          loadMoreFailed: false,
+        });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || isAbortError(error)) {
+          return;
+        }
+
+        setPagination((current) =>
+          current.chatId === chatId
+            ? {
+                ...current,
+                isLoadingMore: false,
+                loadMoreFailed: true,
+              }
+            : current,
+        );
+      });
+  }, [dispatch, pagination, state.activeChat?.chatId, state.credentials]);
+
+  const activePagination =
+    pagination.chatId === state.activeChat?.chatId &&
+    state.historyStatus === 'ready'
+      ? pagination
+      : {
+          chatId: state.activeChat?.chatId ?? null,
+          hasMore: false,
+          isLoadingMore: false,
+          loadMoreFailed: false,
+        };
+
+  return { ...activePagination, loadMoreHistory, reloadHistory };
 }

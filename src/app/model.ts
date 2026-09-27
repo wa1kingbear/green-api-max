@@ -9,6 +9,8 @@ export interface Chat {
   chatId: string;
   phoneNumber: string;
   displayName: string;
+  avatarUrl?: string;
+  avatarStatus?: LoadingStatus;
   lastMessage?: string;
   lastMessageTimestamp?: number;
   previewStatus?: LoadingStatus;
@@ -54,6 +56,11 @@ export type AppAction =
   | { type: 'chats-loading' }
   | { type: 'chats-loaded'; payload: Chat[] }
   | { type: 'chats-failed'; payload: AppError }
+  | {
+      type: 'chat-avatar-loaded';
+      payload: { chatId: string; avatarUrl: string | null };
+    }
+  | { type: 'chat-avatar-failed'; payload: { chatId: string } }
   | {
       type: 'chat-preview-loaded';
       payload: { chatId: string; message: Message | null };

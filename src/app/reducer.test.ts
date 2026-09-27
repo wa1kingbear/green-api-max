@@ -149,6 +149,35 @@ describe('appReducer', () => {
     });
   });
 
+  it('updates an avatar in the chat list and the active chat', () => {
+    const chat = {
+      chatId: 'chat-1',
+      phoneNumber: '70000000001',
+      displayName: 'Первый',
+      avatarStatus: 'loading' as const,
+    };
+    const chatState = appReducer(initialAppState, {
+      type: 'open-chat',
+      payload: chat,
+    });
+    const state = appReducer(chatState, {
+      type: 'chat-avatar-loaded',
+      payload: {
+        chatId: chat.chatId,
+        avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+      },
+    });
+
+    expect(state.chats[0]).toMatchObject({
+      avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+      avatarStatus: 'ready',
+    });
+    expect(state.activeChat).toMatchObject({
+      avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+      avatarStatus: 'ready',
+    });
+  });
+
   it('moves an optimistic message from sending to sent', () => {
     const optimisticMessage = {
       id: 'temp-1',

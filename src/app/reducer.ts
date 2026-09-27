@@ -72,6 +72,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ? {
               ...existingChat,
               ...chat,
+              avatarUrl: existingChat.avatarUrl,
+              avatarStatus: existingChat.avatarStatus ?? chat.avatarStatus,
               lastMessage: existingChat.lastMessage,
               lastMessageTimestamp: existingChat.lastMessageTimestamp,
             }
@@ -91,6 +93,34 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         chatsStatus: 'error',
         chatsError: action.payload,
       };
+    case 'chat-avatar-loaded': {
+      const updateAvatar = (chat: AppState['chats'][number]) =>
+        chat.chatId === action.payload.chatId
+          ? {
+              ...chat,
+              avatarUrl: action.payload.avatarUrl ?? undefined,
+              avatarStatus: 'ready' as const,
+            }
+          : chat;
+
+      return {
+        ...state,
+        chats: state.chats.map(updateAvatar),
+        activeChat: state.activeChat ? updateAvatar(state.activeChat) : null,
+      };
+    }
+    case 'chat-avatar-failed': {
+      const markAvatarFailed = (chat: AppState['chats'][number]) =>
+        chat.chatId === action.payload.chatId
+          ? { ...chat, avatarStatus: 'error' as const }
+          : chat;
+
+      return {
+        ...state,
+        chats: state.chats.map(markAvatarFailed),
+        activeChat: state.activeChat ? markAvatarFailed(state.activeChat) : null,
+      };
+    }
     case 'chat-preview-loaded':
       return {
         ...state,

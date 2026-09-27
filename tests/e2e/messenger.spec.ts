@@ -24,6 +24,7 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
   let checkAccountBody: unknown;
   let sendMessageBody: unknown;
   let deletedReceiptId: string | undefined;
+  let avatarRequestCount = 0;
   let notificationDelivered = false;
   let releaseNotification: (() => void) | undefined;
   const messageSent = new Promise<void>((resolve) => {
@@ -53,6 +54,12 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
           phoneNumber: 79990000000,
         },
       ]);
+      return;
+    }
+
+    if (pathname === `${instancePath}/getAvatar/${apiTokenInstance}`) {
+      avatarRequestCount += 1;
+      await fulfillJson(route, { urlAvatar: '' });
       return;
     }
 
@@ -135,13 +142,12 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
 
   await expect(page.getByRole('heading', { name: 'Чаты', exact: true })).toBeVisible();
   await expect
-    .poll(() =>
-      page.evaluate(() => window.localStorage.getItem('selectedInstance')),
-    )
+    .poll(() => page.evaluate(() => window.localStorage.getItem('selectedInstance')))
     .toBe(JSON.stringify({ idInstance, apiTokenInstance }));
 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Чаты', exact: true })).toBeVisible();
+  await expect.poll(() => avatarRequestCount).toBe(1);
 
   const existingChat = page.getByRole('button', { name: /Анна/ });
   await expect(existingChat.getByText('Сообщение из истории')).toBeVisible();
@@ -173,8 +179,6 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
     page.getByRole('heading', { name: 'Подключите GREEN-API' }),
   ).toBeVisible();
   await expect
-    .poll(() =>
-      page.evaluate(() => window.localStorage.getItem('selectedInstance')),
-    )
+    .poll(() => page.evaluate(() => window.localStorage.getItem('selectedInstance')))
     .toBeNull();
 });

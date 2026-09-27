@@ -244,8 +244,10 @@
 
 .chatAvatar,
 .headerAvatar {
+  position: relative;
   display: grid;
   flex: 0 0 auto;
+  overflow: hidden;
   place-items: center;
   color: #93999f;
   background: #fff;
@@ -255,6 +257,38 @@
 .chatAvatar {
   width: 54px;
   height: 54px;
+}
+
+.avatarImage,
+.avatarSkeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.avatarImage {
+  object-fit: cover;
+}
+
+.avatarSkeleton {
+  overflow: hidden;
+  background: #e7ebef;
+}
+
+.avatarSkeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 18%,
+    rgb(255 255 255 / 70%) 48%,
+    transparent 78%
+  );
+  content: '';
+  transform: translateX(-100%);
+  animation: avatar-shimmer 1.35s ease-in-out infinite;
 }
 
 .chatSummary {
@@ -278,6 +312,30 @@
 .chatSummary span {
   color: var(--muted);
   font-size: 14px;
+}
+
+.chatSummary .chatPreviewSkeleton {
+  position: relative;
+  display: block;
+  width: 152px;
+  height: 11px;
+  overflow: hidden;
+  background: #e7ebef;
+  border-radius: 999px;
+}
+
+.chatPreviewSkeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 72%) 48%,
+    transparent 100%
+  );
+  content: '';
+  transform: translateX(-100%);
+  animation: preview-shimmer 1.35s ease-in-out infinite;
 }
 
 .avatarFallback {
@@ -444,6 +502,18 @@
   }
 }
 
+@keyframes preview-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes avatar-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .connectionStatusDegraded::before {
     animation: none;
@@ -452,6 +522,14 @@
   .loadingDot {
     animation: none;
     border-color: var(--accent);
+  }
+
+  .chatPreviewSkeleton::after {
+    animation: none;
+  }
+
+  .avatarSkeleton::after {
+    animation: none;
   }
 }
 

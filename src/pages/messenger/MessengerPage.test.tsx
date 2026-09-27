@@ -8,6 +8,7 @@ import { AppProvider } from '../../app/AppProvider';
 import { GREEN_API_BASE_URL } from '../../shared/config/environment';
 
 const checkAccountEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/checkAccount/test-token`;
+const getAvatarEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getAvatar/test-token`;
 const getChatsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChats/test-token`;
 const getChatHistoryEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChatHistory/test-token`;
 const getSettingsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getSettings/test-token`;
@@ -19,6 +20,7 @@ const server = setupServer(
     HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
   ),
   http.get(getChatsEndpoint, () => HttpResponse.json([])),
+  http.post(getAvatarEndpoint, () => HttpResponse.json({ urlAvatar: '' })),
   http.post(getChatHistoryEndpoint, () => HttpResponse.json([])),
   http.get(receiveNotificationEndpoint, async () => {
     await delay('infinite');
@@ -109,12 +111,13 @@ describe('messenger integration', () => {
           },
         ]),
       ),
+      http.post(getAvatarEndpoint, () =>
+        HttpResponse.json({ urlAvatar: 'https://i.oneme.ru/avatar.jpg' }),
+      ),
       http.post(getChatHistoryEndpoint, async ({ request }) => {
         const body = await request.json();
 
-        expect(body).toEqual(
-          expect.objectContaining({ chatId: '10000000' }),
-        );
+        expect(body).toEqual(expect.objectContaining({ chatId: '10000000' }));
 
         const messages = [
           {
@@ -148,14 +151,105 @@ describe('messenger integration', () => {
     const chat = await screen.findByRole('button', { name: /Анна/ });
     expect(screen.queryByText('Рабочая группа')).not.toBeInTheDocument();
     expect(await within(chat).findByText('Новое сообщение')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(chat.querySelector('img')).toHaveAttribute(
+        'src',
+        'https://i.oneme.ru/avatar.jpg',
+      ),
+    );
 
     await user.click(chat);
 
-    const messages = await screen.findByLabelText('Сообщения');
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Переписка').querySelector('header img'),
+      ).toHaveAttribute('src', 'https://i.oneme.ru/avatar.jpg'),
+    );
+
+    const messages = await screen.findByLabelText('Сообщения', {}, { timeout: 2_500 });
     const articles = within(messages).getAllByRole('article');
     expect(articles).toHaveLength(2);
     expect(articles[0]).toHaveTextContent('Старое сообщение');
     expect(articles[1]).toHaveTextContent('Новое сообщение');
+  });
+
+  it('shows a skeleton while the chat preview is loading', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async () => {
+        await delay('infinite');
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Анна/ });
+
+    expect(
+      within(chat).getByLabelText('Загружается последнее сообщение'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Загружаем сообщение…')).not.toBeInTheDocument();
+  });
+
+  it('loads older messages on demand', async () => {
+    const history = Array.from({ length: 101 }, (_, index) => {
+      const messageNumber = 101 - index;
+
+      return {
+        type: messageNumber % 2 === 0 ? 'outgoing' : 'incoming',
+        idMessage: `history-${messageNumber}`,
+        timestamp: 1_700_000_000 + messageNumber,
+        statusMessage: 'sent',
+        typeMessage: 'textMessage',
+        chatId: '10000000',
+        textMessage: `Сообщение ${messageNumber}`,
+      };
+    });
+
+    server.use(
+      http.post(checkAccountEndpoint, () =>
+        HttpResponse.json({
+          exist: true,
+          chatId: '10000000',
+          fromCache: false,
+        }),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { count: number };
+        return HttpResponse.json(history.slice(0, body.count));
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await createChat(user, false);
+
+    const loadMoreButton = await screen.findByRole(
+      'button',
+      { name: 'Загрузить еще сообщения' },
+      { timeout: 3_000 },
+    );
+    expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
+
+    await user.click(loadMoreButton);
+
+    expect(
+      await screen.findByText('Сообщение 1', {}, { timeout: 3_000 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Загрузить еще сообщения' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows only navigation available in the MVP', async () => {
@@ -164,9 +258,7 @@ describe('messenger integration', () => {
 
     await connect(user);
 
-    expect(
-      screen.queryByRole('button', { name: /Контакты/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Контакты/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Чаты' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выйти' })).toBeInTheDocument();
   });
@@ -390,7 +482,9 @@ describe('creating a chat', () => {
     expect(
       await screen.findByRole('heading', { name: '+7 999 123-45-67' }),
     ).toBeInTheDocument();
-    expect(await screen.findByText('Начните переписку')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Начните переписку', {}, { timeout: 2_500 }),
+    ).toBeInTheDocument();
   });
 
   it('shows an error when the MAX account does not exist', async () => {
