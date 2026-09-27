@@ -35,6 +35,24 @@ describe('appReducer', () => {
     expect(state.processedMessageIds.size).toBe(0);
   });
 
+  it('closes the active chat without clearing the loaded chat list', () => {
+    const chat = {
+      chatId: '10000000',
+      phoneNumber: '79991234567',
+      displayName: 'Анна',
+    };
+    const openedState = appReducer(initialAppState, {
+      type: 'open-chat',
+      payload: chat,
+    });
+    const state = appReducer(openedState, { type: 'close-chat' });
+
+    expect(state.activeChat).toBeNull();
+    expect(state.chats).toHaveLength(1);
+    expect(state.messages).toEqual([]);
+    expect(state.historyStatus).toBe('idle');
+  });
+
   it('loads chat history and merges messages received while loading', () => {
     const chat = {
       chatId: '10000000',

@@ -155,6 +155,13 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
   await expect(
     page.getByRole('region', { name: 'Переписка' }).getByText('Сообщение из истории'),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\?chatId=20000000$/);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Анна' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Переписка' }).getByText('Сообщение из истории'),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Новый чат' }).first().click();
   await page.getByLabel('Номер телефона').fill('+7 (999) 123-45-67');

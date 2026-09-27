@@ -8,7 +8,7 @@ import {
   WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
@@ -17,6 +17,7 @@ import { useLoadChatHistory } from '../../features/load-chat-history/model/useLo
 import { useLoadChats } from '../../features/load-chats/model/useLoadChats';
 import { useReceiveMessages } from '../../features/receive-messages/model/useReceiveMessages';
 import { useSendMessage } from '../../features/send-message/model/useSendMessage';
+import { getChatIdFromUrl, setChatIdInUrl } from '../../shared/lib/chatUrl';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
 import { MessageComposer } from '../../widgets/message-composer/MessageComposer';
 import { MessageList } from '../../widgets/message-list/MessageList';
@@ -128,6 +129,48 @@ export function MessengerPage() {
   );
   const hasSearchQuery = searchQuery.trim().length > 0;
 
+  const syncChatFromUrl = useCallback(() => {
+    const chatId = getChatIdFromUrl();
+
+    if (!chatId) {
+      if (state.activeChat) {
+        dispatch({ type: 'close-chat' });
+      }
+      setIsMobileChatOpen(false);
+      return;
+    }
+
+    if (state.chatsStatus !== 'ready') {
+      return;
+    }
+
+    const chat = state.chats.find((item) => item.chatId === chatId);
+
+    if (!chat) {
+      setChatIdInUrl(null, 'replace');
+      if (state.activeChat) {
+        dispatch({ type: 'close-chat' });
+      }
+      setIsMobileChatOpen(false);
+      return;
+    }
+
+    if (state.activeChat?.chatId !== chat.chatId) {
+      dispatch({ type: 'open-chat', payload: chat });
+    }
+    setIsMobileChatOpen(true);
+  }, [dispatch, state.activeChat, state.chats, state.chatsStatus]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(syncChatFromUrl, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [syncChatFromUrl]);
+
+  useEffect(() => {
+    window.addEventListener('popstate', syncChatFromUrl);
+    return () => window.removeEventListener('popstate', syncChatFromUrl);
+  }, [syncChatFromUrl]);
+
   const openNewChatDialog = () => {
     newChatTriggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -140,14 +183,27 @@ export function MessengerPage() {
   };
 
   const handleCreateChat = async (phoneNumber: string) => {
-    await createChat(phoneNumber);
+    const chat = await createChat(phoneNumber);
+    setChatIdInUrl(chat.chatId);
     newChatTriggerRef.current = null;
     setIsMobileChatOpen(true);
   };
 
   const openChat = (chat: (typeof state.chats)[number]) => {
+    setChatIdInUrl(chat.chatId);
     dispatch({ type: 'open-chat', payload: chat });
     setIsMobileChatOpen(true);
+  };
+
+  const closeChat = () => {
+    setChatIdInUrl(null);
+    dispatch({ type: 'close-chat' });
+    setIsMobileChatOpen(false);
+  };
+
+  const disconnect = () => {
+    setChatIdInUrl(null, 'replace');
+    dispatch({ type: 'disconnect' });
   };
 
   return (
@@ -165,11 +221,7 @@ export function MessengerPage() {
               <span>Чаты</span>
             </button>
           </div>
-          <button
-            className={styles.railItem}
-            onClick={() => dispatch({ type: 'disconnect' })}
-            type="button"
-          >
+          <button className={styles.railItem} onClick={disconnect} type="button">
             <SignOutIcon size={27} weight="fill" />
             <span>Выйти</span>
           </button>
@@ -336,7 +388,7 @@ export function MessengerPage() {
               <ChatCircleDotsIcon size={27} weight="fill" />
               Чаты
             </button>
-            <button onClick={() => dispatch({ type: 'disconnect' })} type="button">
+            <button onClick={disconnect} type="button">
               <SignOutIcon size={27} weight="fill" />
               Выйти
             </button>
@@ -350,7 +402,7 @@ export function MessengerPage() {
                 <IconButton
                   className={styles.backButton}
                   label="Назад к чатам"
-                  onClick={() => setIsMobileChatOpen(false)}
+                  onClick={closeChat}
                 >
                   <ArrowLeftIcon size={25} weight="bold" />
                 </IconButton>
@@ -362,7 +414,6 @@ export function MessengerPage() {
                 />
                 <div>
                   <h2>{state.activeChat.displayName}</h2>
-                  <span>MAX</span>
                 </div>
               </header>
               {isConnectionDegraded && (

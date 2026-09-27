@@ -54,7 +54,7 @@ export function useCreateChat() {
       existingChat?.avatarStatus === 'ready' ||
       existingChat?.avatarStatus === 'loading'
     ) {
-      return;
+      return chat;
     }
 
     void getAvatar({
@@ -73,5 +73,7 @@ export function useCreateChat() {
           payload: { chatId: result.chatId },
         });
       });
+
+    return chat;
   };
 }

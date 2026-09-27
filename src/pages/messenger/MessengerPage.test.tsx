@@ -93,6 +93,60 @@ function incomingTextNotification({
 }
 
 describe('messenger integration', () => {
+  it('restores the active chat from the URL after a page reload', async () => {
+    const urlTestIdInstance = '1101000099';
+    const urlTestToken = 'url-test-token';
+    const urlTestInstancePath = `${GREEN_API_BASE_URL}/waInstance${urlTestIdInstance}`;
+
+    server.use(
+      http.get(`${urlTestInstancePath}/getSettings/${urlTestToken}`, () =>
+        HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
+      ),
+      http.get(`${urlTestInstancePath}/getChats/${urlTestToken}`, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+        ]),
+      ),
+      http.post(`${urlTestInstancePath}/getAvatar/${urlTestToken}`, () =>
+        HttpResponse.json({ urlAvatar: '' }),
+      ),
+      http.post(`${urlTestInstancePath}/getChatHistory/${urlTestToken}`, () =>
+        HttpResponse.json([]),
+      ),
+      http.get(
+        `${urlTestInstancePath}/receiveNotification/${urlTestToken}`,
+        async () => {
+          await delay('infinite');
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    const firstRender = renderApp();
+
+    await user.type(screen.getByLabelText('ID инстанса'), urlTestIdInstance);
+    await user.type(screen.getByLabelText('API-токен инстанса'), urlTestToken);
+    await user.click(screen.getByRole('button', { name: 'Подключиться' }));
+    await screen.findByRole('heading', { name: 'Чаты' });
+    await user.click(await screen.findByRole('button', { name: /Анна/ }));
+
+    expect(window.location.search).toBe('?chatId=10000000');
+    expect(screen.getByRole('heading', { name: 'Анна' })).toBeInTheDocument();
+
+    firstRender.unmount();
+    renderApp();
+
+    expect(await screen.findByRole('heading', { name: 'Анна' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Анна/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
   it('loads personal chats and the selected chat history', async () => {
     server.use(
       http.get(getChatsEndpoint, () =>

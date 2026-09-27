@@ -199,6 +199,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         historyError: null,
       };
     }
+    case 'close-chat':
+      return {
+        ...state,
+        activeChat: null,
+        messages: [],
+        historyStatus: 'idle',
+        historyError: null,
+      };
     case 'history-loading':
       if (state.activeChat?.chatId !== action.payload.chatId) {
         return state;

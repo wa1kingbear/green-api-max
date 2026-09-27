@@ -69,6 +69,7 @@ export type AppAction =
     }
   | { type: 'chat-preview-failed'; payload: { chatId: string } }
   | { type: 'open-chat'; payload: Chat }
+  | { type: 'close-chat' }
   | { type: 'history-loading'; payload: { chatId: string } }
   | {
       type: 'history-loaded';
