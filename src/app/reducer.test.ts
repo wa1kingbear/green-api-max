@@ -272,6 +272,68 @@ describe('appReducer', () => {
     });
   });
 
+  it('applies batched preview and avatar updates in one reducer action', () => {
+    const chats = [
+      {
+        chatId: 'chat-1',
+        phoneNumber: '70000000001',
+        displayName: 'Первый',
+        avatarStatus: 'idle' as const,
+        previewStatus: 'idle' as const,
+      },
+      {
+        chatId: 'chat-2',
+        phoneNumber: '70000000002',
+        displayName: 'Второй',
+        avatarStatus: 'idle' as const,
+        previewStatus: 'idle' as const,
+      },
+    ];
+    const loadedState = appReducer(initialAppState, {
+      type: 'chats-loaded',
+      payload: chats,
+    });
+    const state = appReducer(loadedState, {
+      type: 'chat-details-updated',
+      payload: [
+        {
+          chatId: 'chat-1',
+          avatar: {
+            status: 'ready',
+            avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+          },
+          preview: {
+            status: 'ready',
+            message: {
+              id: 'message-1',
+              chatId: 'chat-1',
+              direction: 'incoming',
+              text: 'Новое сообщение',
+              timestamp: 10,
+              status: 'sent',
+            },
+          },
+        },
+        {
+          chatId: 'chat-2',
+          avatar: { status: 'error' },
+          preview: { status: 'error' },
+        },
+      ],
+    });
+
+    expect(state.chats[0]).toMatchObject({
+      avatarStatus: 'ready',
+      avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+      lastMessage: 'Новое сообщение',
+      previewStatus: 'ready',
+    });
+    expect(state.chats[1]).toMatchObject({
+      avatarStatus: 'error',
+      previewStatus: 'error',
+    });
+  });
+
   it('moves an optimistic message from sending to sent', () => {
     const optimisticMessage = {
       id: 'temp-1',

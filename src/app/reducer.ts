@@ -1,4 +1,4 @@
-import type { AppAction, AppState } from './model';
+import type { AppAction, AppState, ChatDetailsUpdate } from './model';
 
 function upsertChat(state: AppState, chat: AppState['chats'][number]) {
   const existingChat = state.chats.find((item) => item.chatId === chat.chatId);
@@ -41,6 +41,48 @@ function updateChatPreview(
 
 function getMessagePreview(message: AppState['messages'][number]): string {
   return message.text || (message.mediaUrl ? 'Медиафайл' : '');
+}
+
+function applyChatDetailsUpdate(
+  chat: AppState['chats'][number],
+  update: ChatDetailsUpdate | undefined,
+) {
+  if (!update) {
+    return chat;
+  }
+
+  let updatedChat = chat;
+
+  if (update.avatar) {
+    updatedChat = {
+      ...updatedChat,
+      ...(update.avatar.status === 'ready'
+        ? { avatarUrl: update.avatar.avatarUrl ?? undefined }
+        : {}),
+      avatarStatus: update.avatar.status,
+    };
+  }
+
+  if (update.preview) {
+    const message = update.preview.status === 'ready' ? update.preview.message : null;
+    const isNewerMessage =
+      message !== null &&
+      (updatedChat.lastMessageTimestamp === undefined ||
+        message.timestamp >= updatedChat.lastMessageTimestamp);
+
+    updatedChat = {
+      ...updatedChat,
+      ...(isNewerMessage
+        ? {
+            lastMessage: getMessagePreview(message),
+            lastMessageTimestamp: message.timestamp,
+          }
+        : {}),
+      previewStatus: update.preview.status,
+    };
+  }
+
+  return updatedChat;
 }
 
 function mergeMessages(history: AppState['messages'], current: AppState['messages']) {
@@ -187,6 +229,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             : chat,
         ),
       };
+    case 'chat-details-updated': {
+      const updatesByChatId = new Map(
+        action.payload.map((update) => [update.chatId, update]),
+      );
+      const applyUpdate = (chat: AppState['chats'][number]) =>
+        applyChatDetailsUpdate(chat, updatesByChatId.get(chat.chatId));
+
+      return {
+        ...state,
+        chats: state.chats.map(applyUpdate),
+        activeChat: state.activeChat ? applyUpdate(state.activeChat) : null,
+      };
+    }
     case 'open-chat': {
       const isSameChat = state.activeChat?.chatId === action.payload.chatId;
       const chat = { ...action.payload, unreadCount: 0 };

@@ -53,6 +53,12 @@ export interface AppState {
   pollingError: AppError | null;
 }
 
+export interface ChatDetailsUpdate {
+  chatId: string;
+  avatar?: { status: 'ready'; avatarUrl: string | null } | { status: 'error' };
+  preview?: { status: 'ready'; message: Message | null } | { status: 'error' };
+}
+
 export type AppAction =
   | { type: 'connect'; payload: Credentials }
   | { type: 'chats-loading' }
@@ -68,6 +74,7 @@ export type AppAction =
       payload: { chatId: string; message: Message | null };
     }
   | { type: 'chat-preview-failed'; payload: { chatId: string } }
+  | { type: 'chat-details-updated'; payload: ChatDetailsUpdate[] }
   | { type: 'open-chat'; payload: Chat }
   | { type: 'close-chat' }
   | { type: 'history-loading'; payload: { chatId: string } }

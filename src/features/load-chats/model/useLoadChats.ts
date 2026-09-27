@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { AppError, Chat, Credentials } from '../../../app/model';
+import type {
+  AppError,
+  Chat,
+  ChatDetailsUpdate,
+  Credentials,
+} from '../../../app/model';
 import { useApp } from '../../../app/useApp';
 import { getAvatar } from '../../../shared/api/getAvatar';
 import { getChatHistory } from '../../../shared/api/getChatHistory';
@@ -12,9 +17,13 @@ interface ChatDetailsRuntime {
   chatsById: Map<string, Chat>;
   controller: AbortController;
   credentials: Credentials;
+  flushTimeoutId: number | null;
+  pendingUpdates: Map<string, ChatDetailsUpdate>;
   requestedAvatars: Set<string>;
   requestedPreviews: Set<string>;
 }
+
+const DETAILS_UPDATE_BATCH_MS = 100;
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -43,6 +52,35 @@ export function useLoadChats() {
   const runtimeRef = useRef<ChatDetailsRuntime | null>(null);
   const reloadChats = useCallback(() => setReloadVersion((value) => value + 1), []);
 
+  const queueChatDetailsUpdate = useCallback(
+    (runtime: ChatDetailsRuntime, update: ChatDetailsUpdate) => {
+      const pendingUpdate = runtime.pendingUpdates.get(update.chatId);
+      runtime.pendingUpdates.set(update.chatId, {
+        chatId: update.chatId,
+        avatar: update.avatar ?? pendingUpdate?.avatar,
+        preview: update.preview ?? pendingUpdate?.preview,
+      });
+
+      if (runtime.flushTimeoutId !== null) {
+        return;
+      }
+
+      runtime.flushTimeoutId = window.setTimeout(() => {
+        runtime.flushTimeoutId = null;
+
+        if (runtime.controller.signal.aborted || runtime.pendingUpdates.size === 0) {
+          runtime.pendingUpdates.clear();
+          return;
+        }
+
+        const updates = [...runtime.pendingUpdates.values()];
+        runtime.pendingUpdates.clear();
+        dispatch({ type: 'chat-details-updated', payload: updates });
+      }, DETAILS_UPDATE_BATCH_MS);
+    },
+    [dispatch],
+  );
+
   const loadChatPreview = useCallback(
     (runtime: ChatDetailsRuntime, chat: Chat) => {
       if (runtime.requestedPreviews.has(chat.chatId)) {
@@ -59,22 +97,25 @@ export function useLoadChats() {
       })
         .then((messages) => {
           if (!runtime.controller.signal.aborted) {
-            dispatch({
-              type: 'chat-preview-loaded',
-              payload: { chatId: chat.chatId, message: messages.at(-1) ?? null },
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              preview: {
+                status: 'ready',
+                message: messages.at(-1) ?? null,
+              },
             });
           }
         })
         .catch((error: unknown) => {
           if (!runtime.controller.signal.aborted && !isAbortError(error)) {
-            dispatch({
-              type: 'chat-preview-failed',
-              payload: { chatId: chat.chatId },
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              preview: { status: 'error' },
             });
           }
         });
     },
-    [dispatch],
+    [queueChatDetailsUpdate],
   );
 
   const loadChatAvatar = useCallback(
@@ -91,22 +132,22 @@ export function useLoadChats() {
       })
         .then((avatarUrl) => {
           if (!runtime.controller.signal.aborted) {
-            dispatch({
-              type: 'chat-avatar-loaded',
-              payload: { chatId: chat.chatId, avatarUrl },
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              avatar: { status: 'ready', avatarUrl },
             });
           }
         })
         .catch((error: unknown) => {
           if (!runtime.controller.signal.aborted && !isAbortError(error)) {
-            dispatch({
-              type: 'chat-avatar-failed',
-              payload: { chatId: chat.chatId },
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              avatar: { status: 'error' },
             });
           }
         });
     },
-    [dispatch],
+    [queueChatDetailsUpdate],
   );
 
   const loadChatDetails = useCallback(
@@ -167,6 +208,8 @@ export function useLoadChats() {
           chatsById: new Map(chats.map((chat) => [chat.chatId, chat])),
           controller,
           credentials,
+          flushTimeoutId: null,
+          pendingUpdates: new Map(),
           requestedAvatars: new Set(),
           requestedPreviews: new Set(),
         };
@@ -180,9 +223,17 @@ export function useLoadChats() {
 
     return () => {
       controller.abort();
-      if (runtimeRef.current?.controller === controller) {
-        runtimeRef.current = null;
+      const runtime = runtimeRef.current;
+
+      if (runtime?.controller !== controller) {
+        return;
       }
+
+      if (runtime.flushTimeoutId !== null) {
+        window.clearTimeout(runtime.flushTimeoutId);
+      }
+      runtime.pendingUpdates.clear();
+      runtimeRef.current = null;
     };
   }, [dispatch, reloadVersion, state.credentials]);
 

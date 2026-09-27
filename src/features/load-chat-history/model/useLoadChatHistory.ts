@@ -6,6 +6,7 @@ import { getChatHistoryPage } from '../../../shared/api/getChatHistory';
 import { isGreenApiError } from '../../../shared/api/greenApiError';
 
 const HISTORY_PAGE_SIZE = 100;
+const HISTORY_MAX_COUNT = 5_000;
 
 interface HistoryPaginationState {
   chatId: string | null;
@@ -46,10 +47,7 @@ export function useLoadChatHistory() {
   });
   const loadedCountRef = useRef(HISTORY_PAGE_SIZE);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
-  const reloadHistory = useCallback(
-    () => setReloadVersion((value) => value + 1),
-    [],
-  );
+  const reloadHistory = useCallback(() => setReloadVersion((value) => value + 1), []);
 
   useEffect(() => {
     const credentials = state.credentials;
@@ -78,7 +76,7 @@ export function useLoadChatHistory() {
           });
           setPagination({
             chatId,
-            hasMore: page.hasMore,
+            hasMore: page.hasMore && HISTORY_PAGE_SIZE < HISTORY_MAX_COUNT,
             isLoadingMore: false,
             loadMoreFailed: false,
           });
@@ -114,7 +112,7 @@ export function useLoadChatHistory() {
     }
 
     const controller = new AbortController();
-    const nextCount = loadedCountRef.current + HISTORY_PAGE_SIZE;
+    const nextCount = Math.min(loadedCountRef.current * 2, HISTORY_MAX_COUNT);
     loadMoreControllerRef.current = controller;
     setPagination((current) => ({
       ...current,
@@ -140,7 +138,7 @@ export function useLoadChatHistory() {
         });
         setPagination({
           chatId,
-          hasMore: page.hasMore,
+          hasMore: page.hasMore && nextCount < HISTORY_MAX_COUNT,
           isLoadingMore: false,
           loadMoreFailed: false,
         });
@@ -163,8 +161,7 @@ export function useLoadChatHistory() {
   }, [dispatch, pagination, state.activeChat?.chatId, state.credentials]);
 
   const activePagination =
-    pagination.chatId === state.activeChat?.chatId &&
-    state.historyStatus === 'ready'
+    pagination.chatId === state.activeChat?.chatId && state.historyStatus === 'ready'
       ? pagination
       : {
           chatId: state.activeChat?.chatId ?? null,

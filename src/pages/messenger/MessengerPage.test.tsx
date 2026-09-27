@@ -410,8 +410,9 @@ describe('messenger integration', () => {
   });
 
   it('loads older messages on demand', async () => {
-    const history = Array.from({ length: 101 }, (_, index) => {
-      const messageNumber = 101 - index;
+    const requestedCounts: number[] = [];
+    const history = Array.from({ length: 201 }, (_, index) => {
+      const messageNumber = 201 - index;
 
       return {
         type: messageNumber % 2 === 0 ? 'outgoing' : 'incoming',
@@ -434,6 +435,7 @@ describe('messenger integration', () => {
       ),
       http.post(getChatHistoryEndpoint, async ({ request }) => {
         const body = (await request.json()) as { count: number };
+        requestedCounts.push(body.count);
         return HttpResponse.json(history.slice(0, body.count));
       }),
     );
@@ -451,10 +453,19 @@ describe('messenger integration', () => {
     expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
 
     await user.click(loadMoreButton);
+    await waitFor(() => expect(requestedCounts).toEqual([100, 200]), {
+      timeout: 2_500,
+    });
+    expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Загрузить еще сообщения' }),
+    );
 
     expect(
       await screen.findByText('Сообщение 1', {}, { timeout: 3_000 }),
     ).toBeInTheDocument();
+    expect(requestedCounts).toEqual([100, 200, 400]);
     expect(
       screen.queryByRole('button', { name: 'Загрузить еще сообщения' }),
     ).not.toBeInTheDocument();
