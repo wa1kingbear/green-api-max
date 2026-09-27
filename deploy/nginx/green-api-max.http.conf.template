@@ -33,6 +33,10 @@ server {
         text/css
         text/plain;
 
+    location ^~ /.well-known/acme-challenge/ {
+        root __ACME_ROOT__;
+    }
+
     location = /healthz {
         access_log off;
         default_type text/plain;
