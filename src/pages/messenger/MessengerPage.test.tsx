@@ -87,6 +87,19 @@ function incomingTextNotification({
 }
 
 describe('messenger integration', () => {
+  it('shows only navigation available in the MVP', async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+
+    expect(
+      screen.queryByRole('button', { name: /Контакты/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Чаты' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выйти' })).toBeInTheDocument();
+  });
+
   it('completes settings, chat, send, receive and delete flow', async () => {
     const order: string[] = [];
     let notificationDelivered = false;

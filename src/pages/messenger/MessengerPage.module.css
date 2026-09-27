@@ -43,11 +43,6 @@
   background: #f4f5f6;
 }
 
-.railItem:disabled,
-.mobileFooter button:disabled {
-  cursor: default;
-}
-
 .railItemActive {
   color: var(--accent);
 }
@@ -440,7 +435,7 @@
     min-height: 78px;
     padding: 7px max(12px, env(safe-area-inset-right))
       max(7px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     background: rgb(255 255 255 / 96%);
     border-top: 1px solid var(--line);
   }

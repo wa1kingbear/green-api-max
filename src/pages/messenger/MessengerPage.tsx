@@ -1,12 +1,10 @@
 import {
   ArrowLeftIcon,
   ChatCircleDotsIcon,
-  GearSixIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SignOutIcon,
   UserCircleIcon,
-  UsersThreeIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react';
 import { useRef, useState } from 'react';
@@ -62,16 +60,6 @@ export function MessengerPage() {
             >
               <ChatCircleDotsIcon size={27} weight="fill" />
               <span>Чаты</span>
-            </button>
-            <button
-              aria-label="Контакты — недоступно в MVP"
-              className={styles.railItem}
-              disabled
-              title="Контакты не входят в MVP"
-              type="button"
-            >
-              <UsersThreeIcon size={27} weight="fill" />
-              <span>Контакты</span>
             </button>
           </div>
           <button
@@ -144,21 +132,12 @@ export function MessengerPage() {
           )}
 
           <footer className={styles.mobileFooter}>
-            <button
-              aria-label="Контакты — недоступно в MVP"
-              disabled
-              title="Контакты не входят в MVP"
-              type="button"
-            >
-              <UsersThreeIcon size={27} weight="fill" />
-              Контакты
-            </button>
             <button className={styles.mobileFooterActive} type="button">
               <ChatCircleDotsIcon size={27} weight="fill" />
               Чаты
             </button>
             <button onClick={() => dispatch({ type: 'disconnect' })} type="button">
-              <GearSixIcon size={27} weight="fill" />
+              <SignOutIcon size={27} weight="fill" />
               Выйти
             </button>
           </footer>
