@@ -83,7 +83,7 @@
 }
 
 .field input::placeholder {
-  color: #9b9fa4;
+  color: #626a72;
 }
 
 .field input:hover {
@@ -192,7 +192,7 @@
   gap: 10px;
   margin-top: 22px;
   padding: 13px 14px;
-  color: #6f757b;
+  color: #5f6870;
   background: #f7f8f9;
   border-radius: 13px;
 }
@@ -233,6 +233,7 @@
   .card {
     display: flex;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 28px 24px;
     flex-direction: column;
     justify-content: center;
@@ -244,5 +245,15 @@
   .brand {
     position: absolute;
     top: 28px;
+  }
+}
+
+@media (max-width: 520px) and (max-height: 600px) {
+  .card {
+    justify-content: flex-start;
+  }
+
+  .brand {
+    position: static;
   }
 }

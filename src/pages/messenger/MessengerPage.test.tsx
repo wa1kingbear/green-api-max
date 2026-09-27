@@ -264,6 +264,27 @@ describe('messenger integration', () => {
 });
 
 describe('creating a chat', () => {
+  it('traps focus in the dialog and returns it to the trigger', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await connect(user);
+
+    const trigger = screen.getAllByRole('button', { name: 'Новый чат' })[0];
+    await user.click(trigger);
+
+    const phoneInput = screen.getByLabelText('Номер телефона');
+    expect(phoneInput).toHaveFocus();
+
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Продолжить' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
   it('opens a chat returned by CheckAccount', async () => {
     server.use(
       http.post(checkAccountEndpoint, () =>
