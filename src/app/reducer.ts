@@ -76,6 +76,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
               avatarStatus: existingChat.avatarStatus ?? chat.avatarStatus,
               lastMessage: existingChat.lastMessage,
               lastMessageTimestamp: existingChat.lastMessageTimestamp,
+              unreadCount:
+                state.activeChat?.chatId === chat.chatId
+                  ? 0
+                  : Math.max(existingChat.unreadCount ?? 0, chat.unreadCount ?? 0),
             }
           : chat;
       });
@@ -158,11 +162,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case 'open-chat': {
       const isSameChat = state.activeChat?.chatId === action.payload.chatId;
+      const chat = { ...action.payload, unreadCount: 0 };
 
       return {
         ...state,
-        activeChat: action.payload,
-        chats: upsertChat(state, action.payload),
+        activeChat: chat,
+        chats: upsertChat(state, chat),
         messages: isSameChat ? state.messages : [],
         historyStatus: isSameChat ? state.historyStatus : 'idle',
         historyError: null,
@@ -234,15 +239,23 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const processedMessageIds = new Set(state.processedMessageIds);
       processedMessageIds.add(action.payload.id);
       const isActiveChat = action.payload.chatId === state.activeChat?.chatId;
+      const chats = updateChatPreview(
+        state,
+        action.payload.chatId,
+        action.payload.text,
+        action.payload.timestamp,
+      ).map((chat) =>
+        chat.chatId === action.payload.chatId
+          ? {
+              ...chat,
+              unreadCount: isActiveChat ? 0 : (chat.unreadCount ?? 0) + 1,
+            }
+          : chat,
+      );
 
       return {
         ...state,
-        chats: updateChatPreview(
-          state,
-          action.payload.chatId,
-          action.payload.text,
-          action.payload.timestamp,
-        ),
+        chats,
         messages: isActiveChat
           ? mergeMessages([], [...state.messages, action.payload])
           : state.messages,

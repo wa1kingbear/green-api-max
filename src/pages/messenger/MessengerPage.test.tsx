@@ -480,6 +480,71 @@ describe('messenger integration', () => {
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 
+  it('shows an unread count for a new message and clears it on open', async () => {
+    let releaseNotification: (() => void) | undefined;
+    let notificationDelivered = false;
+    const chatsLoaded = new Promise<void>((resolve) => {
+      releaseNotification = resolve;
+    });
+
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '20000000',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+            unreadCount: 3,
+          },
+        ]),
+      ),
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await chatsLoaded;
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 404,
+          body: incomingTextNotification({
+            chatId: '20000000',
+            idMessage: 'unread-message',
+            text: 'Новое сообщение',
+          }),
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Сергей/ });
+
+    expect(
+      within(chat).getByLabelText('Непрочитанных сообщений: 3'),
+    ).toHaveTextContent('3');
+
+    releaseNotification?.();
+
+    expect(
+      await within(chat).findByLabelText('Непрочитанных сообщений: 4'),
+    ).toHaveTextContent('4');
+
+    await user.click(chat);
+
+    expect(
+      within(chat).queryByLabelText(/Непрочитанных сообщений:/),
+    ).not.toBeInTheDocument();
+  });
+
   it('aborts the active ReceiveNotification request on disconnect', async () => {
     let requestStarted = false;
     let requestAborted = false;

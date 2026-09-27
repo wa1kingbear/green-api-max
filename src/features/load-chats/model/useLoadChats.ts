@@ -63,6 +63,7 @@ export function useLoadChats() {
               (chat.phoneNumber ? formatPhoneNumber(chat.phoneNumber) : 'Чат MAX'),
             avatarStatus: 'loading',
             previewStatus: 'loading',
+            unreadCount: chat.unreadCount,
           }));
 
         dispatch({ type: 'chats-loaded', payload: chats });

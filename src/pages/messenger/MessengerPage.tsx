@@ -242,7 +242,7 @@ export function MessengerPage() {
                       state.activeChat?.chatId === chat.chatId
                         ? styles.chatItemActive
                         : ''
-                    }`}
+                    } ${chat.unreadCount ? styles.chatItemUnread : ''}`}
                     key={chat.chatId}
                     onClick={() => openChat(chat)}
                     type="button"
@@ -265,6 +265,14 @@ export function MessengerPage() {
                         <span>{getChatPreview(chat)}</span>
                       )}
                     </span>
+                    {Boolean(chat.unreadCount) && (
+                      <span
+                        aria-label={`Непрочитанных сообщений: ${chat.unreadCount}`}
+                        className={styles.unreadBadge}
+                      >
+                        {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
+                      </span>
+                    )}
                   </button>
                 ))}
               </section>

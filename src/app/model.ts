@@ -14,6 +14,7 @@ export interface Chat {
   lastMessage?: string;
   lastMessageTimestamp?: number;
   previewStatus?: LoadingStatus;
+  unreadCount?: number;
 }
 
 export type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error';

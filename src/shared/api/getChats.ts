@@ -9,6 +9,7 @@ export interface GreenApiChat {
   name: string;
   type: GreenApiChatType;
   phoneNumber: string;
+  unreadCount: number;
 }
 
 interface GetChatsParams {
@@ -43,6 +44,12 @@ function parseChat(value: unknown): GreenApiChat | null {
           ? String(value.phoneNumber)
           : ''
         : value.phoneNumber,
+    unreadCount:
+      typeof value.unreadCount === 'number' &&
+      Number.isFinite(value.unreadCount) &&
+      value.unreadCount > 0
+        ? Math.floor(value.unreadCount)
+        : 0,
   };
 }
 
@@ -75,11 +82,13 @@ export async function getChats({
     'getChats',
     encodeURIComponent(credentials.apiTokenInstance),
   ].join('/');
+  const requestUrl = new URL(`${baseUrl}/${path}`);
+  requestUrl.searchParams.set('count', '100');
 
   let response: Response;
 
   try {
-    response = await fetch(`${baseUrl}/${path}`, { signal });
+    response = await fetch(requestUrl, { signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;

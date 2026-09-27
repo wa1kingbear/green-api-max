@@ -18,17 +18,20 @@ afterAll(() => server.close());
 describe('getChats', () => {
   it('returns valid MAX chats', async () => {
     server.use(
-      http.get(endpoint, () =>
-        HttpResponse.json([
+      http.get(endpoint, ({ request }) => {
+        expect(new URL(request.url).searchParams.get('count')).toBe('100');
+
+        return HttpResponse.json([
           {
             chatId: '10000000',
             name: 'Анна',
             type: 'user',
             phoneNumber: 79991234567,
+            unreadCount: 3,
           },
           { chatId: null, name: 'Invalid', type: 'user', phoneNumber: 0 },
-        ]),
-      ),
+        ]);
+      }),
     );
 
     await expect(getChats({ apiUrl, credentials })).resolves.toEqual([
@@ -37,7 +40,35 @@ describe('getChats', () => {
         name: 'Анна',
         type: 'user',
         phoneNumber: '79991234567',
+        unreadCount: 3,
       },
+    ]);
+  });
+
+  it('defaults a missing or invalid unread count to zero', async () => {
+    server.use(
+      http.get(endpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '10000001',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+            unreadCount: -2,
+          },
+        ]),
+      ),
+    );
+
+    await expect(getChats({ apiUrl, credentials })).resolves.toEqual([
+      expect.objectContaining({ chatId: '10000000', unreadCount: 0 }),
+      expect.objectContaining({ chatId: '10000001', unreadCount: 0 }),
     ]);
   });
 

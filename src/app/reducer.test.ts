@@ -29,8 +29,8 @@ describe('appReducer', () => {
       payload: chat,
     });
 
-    expect(state.activeChat).toEqual(chat);
-    expect(state.chats).toEqual([chat]);
+    expect(state.activeChat).toEqual({ ...chat, unreadCount: 0 });
+    expect(state.chats).toEqual([{ ...chat, unreadCount: 0 }]);
     expect(state.messages).toEqual([]);
     expect(state.processedMessageIds.size).toBe(0);
   });
@@ -102,6 +102,59 @@ describe('appReducer', () => {
 
     expect(state.chats.map((chat) => chat.chatId)).toEqual(['chat-2', 'chat-1']);
     expect(state.chats[0]?.lastMessage).toBe('Ответ');
+    expect(state.chats[0]?.unreadCount).toBe(1);
+  });
+
+  it('counts unread messages and clears the count when the chat opens', () => {
+    const stateWithChats = appReducer(initialAppState, {
+      type: 'chats-loaded',
+      payload: [
+        { chatId: 'chat-1', phoneNumber: '70000000001', displayName: 'Первый' },
+      ],
+    });
+    const firstMessageState = appReducer(stateWithChats, {
+      type: 'receive-message',
+      payload: {
+        id: 'incoming-1',
+        chatId: 'chat-1',
+        direction: 'incoming',
+        text: 'Первое',
+        timestamp: 10,
+        status: 'sent',
+      },
+    });
+    const secondMessageState = appReducer(firstMessageState, {
+      type: 'receive-message',
+      payload: {
+        id: 'incoming-2',
+        chatId: 'chat-1',
+        direction: 'incoming',
+        text: 'Второе',
+        timestamp: 20,
+        status: 'sent',
+      },
+    });
+    const duplicateState = appReducer(secondMessageState, {
+      type: 'receive-message',
+      payload: {
+        id: 'incoming-2',
+        chatId: 'chat-1',
+        direction: 'incoming',
+        text: 'Второе',
+        timestamp: 20,
+        status: 'sent',
+      },
+    });
+    const openedState = appReducer(duplicateState, {
+      type: 'open-chat',
+      payload: duplicateState.chats[0]!,
+    });
+
+    expect(firstMessageState.chats[0]?.unreadCount).toBe(1);
+    expect(secondMessageState.chats[0]?.unreadCount).toBe(2);
+    expect(duplicateState).toBe(secondMessageState);
+    expect(openedState.chats[0]?.unreadCount).toBe(0);
+    expect(openedState.activeChat?.unreadCount).toBe(0);
   });
 
   it('loads a chat preview without replacing a newer live message', () => {
@@ -245,7 +298,10 @@ describe('appReducer', () => {
       timestamp: 1,
       status: 'sent' as const,
     };
-    const chatState = { ...initialAppState, activeChat };
+    const chatState = appReducer(initialAppState, {
+      type: 'open-chat',
+      payload: activeChat,
+    });
     const receivedState = appReducer(chatState, {
       type: 'receive-message',
       payload: message,
@@ -256,6 +312,7 @@ describe('appReducer', () => {
     });
 
     expect(receivedState.messages).toEqual([message]);
+    expect(receivedState.chats[0]?.unreadCount).toBe(0);
     expect(receivedState.processedMessageIds.has('incoming-1')).toBe(true);
     expect(duplicateState).toBe(receivedState);
   });
