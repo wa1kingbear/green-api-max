@@ -8,6 +8,9 @@ import { AppProvider } from '../../app/AppProvider';
 import { GREEN_API_BASE_URL } from '../../shared/config/environment';
 
 const checkAccountEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/checkAccount/test-token`;
+const getAvatarEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getAvatar/test-token`;
+const getChatsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChats/test-token`;
+const getChatHistoryEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getChatHistory/test-token`;
 const getSettingsEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/getSettings/test-token`;
 const sendMessageEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/sendMessage/test-token`;
 const receiveNotificationEndpoint = `${GREEN_API_BASE_URL}/waInstance1101000001/receiveNotification/test-token`;
@@ -16,6 +19,9 @@ const server = setupServer(
   http.get(getSettingsEndpoint, () =>
     HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
   ),
+  http.get(getChatsEndpoint, () => HttpResponse.json([])),
+  http.post(getAvatarEndpoint, () => HttpResponse.json({ urlAvatar: '' })),
+  http.post(getChatHistoryEndpoint, () => HttpResponse.json([])),
   http.get(receiveNotificationEndpoint, async () => {
     await delay('infinite');
   }),
@@ -87,15 +93,249 @@ function incomingTextNotification({
 }
 
 describe('messenger integration', () => {
+  it('loads personal chats and the selected chat history', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '-10000000',
+            name: 'Рабочая группа',
+            type: 'group',
+            phoneNumber: 0,
+          },
+        ]),
+      ),
+      http.post(getAvatarEndpoint, () =>
+        HttpResponse.json({ urlAvatar: 'https://i.oneme.ru/avatar.jpg' }),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = await request.json();
+
+        expect(body).toEqual(expect.objectContaining({ chatId: '10000000' }));
+
+        const messages = [
+          {
+            type: 'incoming',
+            idMessage: 'history-2',
+            timestamp: 1763115120,
+            typeMessage: 'textMessage',
+            chatId: '10000000',
+            textMessage: 'Новое сообщение',
+          },
+          {
+            type: 'outgoing',
+            idMessage: 'history-1',
+            timestamp: 1763115110,
+            statusMessage: 'sent',
+            typeMessage: 'textMessage',
+            chatId: '10000000',
+            textMessage: 'Старое сообщение',
+          },
+        ];
+
+        return HttpResponse.json(
+          (body as { count?: number }).count === 1 ? messages.slice(0, 1) : messages,
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Анна/ });
+    expect(screen.queryByText('Рабочая группа')).not.toBeInTheDocument();
+    expect(await within(chat).findByText('Новое сообщение')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(chat.querySelector('img')).toHaveAttribute(
+        'src',
+        'https://i.oneme.ru/avatar.jpg',
+      ),
+    );
+
+    await user.click(chat);
+
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Переписка').querySelector('header img'),
+      ).toHaveAttribute('src', 'https://i.oneme.ru/avatar.jpg'),
+    );
+
+    const messages = await screen.findByLabelText('Сообщения', {}, { timeout: 2_500 });
+    const articles = within(messages).getAllByRole('article');
+    expect(articles).toHaveLength(2);
+    expect(articles[0]).toHaveTextContent('Старое сообщение');
+    expect(articles[1]).toHaveTextContent('Новое сообщение');
+  });
+
+  it('shows a skeleton while the chat preview is loading', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async () => {
+        await delay('infinite');
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Анна/ });
+
+    expect(
+      within(chat).getByLabelText('Загружается последнее сообщение'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Загружаем сообщение…')).not.toBeInTheDocument();
+  });
+
+  it('filters loaded chats by name, phone number and message preview', async () => {
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна Иванова',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '10000001',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { chatId: string };
+        const textMessage =
+          body.chatId === '10000000' ? 'Покажи договор' : 'Созвонимся завтра';
+
+        return HttpResponse.json([
+          {
+            type: 'incoming',
+            idMessage: `history-${body.chatId}`,
+            timestamp: 1763115120,
+            typeMessage: 'textMessage',
+            chatId: body.chatId,
+            textMessage,
+          },
+        ]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const search = screen.getByRole('searchbox', { name: 'Найти чат' });
+    const annaChat = await screen.findByRole('button', { name: /Анна Иванова/ });
+    await within(annaChat).findByText('Покажи договор', {}, { timeout: 3_000 });
+
+    await user.type(search, 'анна');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Очистить поиск' }));
+    await user.type(search, '8 (987) 654-32-10');
+
+    expect(
+      screen.queryByRole('button', { name: /Анна Иванова/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Сергей/ })).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, '+7 999 123');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'ДОГОВОР');
+
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Сергей/ })).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'несуществующий чат');
+
+    expect(screen.getByRole('heading', { name: 'Ничего не найдено' })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Сбросить поиск' }));
+    expect(screen.getByRole('button', { name: /Анна Иванова/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Сергей/ })).toBeInTheDocument();
+  });
+
+  it('loads older messages on demand', async () => {
+    const history = Array.from({ length: 101 }, (_, index) => {
+      const messageNumber = 101 - index;
+
+      return {
+        type: messageNumber % 2 === 0 ? 'outgoing' : 'incoming',
+        idMessage: `history-${messageNumber}`,
+        timestamp: 1_700_000_000 + messageNumber,
+        statusMessage: 'sent',
+        typeMessage: 'textMessage',
+        chatId: '10000000',
+        textMessage: `Сообщение ${messageNumber}`,
+      };
+    });
+
+    server.use(
+      http.post(checkAccountEndpoint, () =>
+        HttpResponse.json({
+          exist: true,
+          chatId: '10000000',
+          fromCache: false,
+        }),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { count: number };
+        return HttpResponse.json(history.slice(0, body.count));
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await createChat(user, false);
+
+    const loadMoreButton = await screen.findByRole(
+      'button',
+      { name: 'Загрузить еще сообщения' },
+      { timeout: 3_000 },
+    );
+    expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
+
+    await user.click(loadMoreButton);
+
+    expect(
+      await screen.findByText('Сообщение 1', {}, { timeout: 3_000 }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Загрузить еще сообщения' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows only navigation available in the MVP', async () => {
     const user = userEvent.setup();
     renderApp();
 
     await connect(user);
 
-    expect(
-      screen.queryByRole('button', { name: /Контакты/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Контакты/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Чаты' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выйти' })).toBeInTheDocument();
   });
@@ -242,6 +482,71 @@ describe('messenger integration', () => {
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
   });
 
+  it('shows an unread count for a new message and clears it on open', async () => {
+    let releaseNotification: (() => void) | undefined;
+    let notificationDelivered = false;
+    const chatsLoaded = new Promise<void>((resolve) => {
+      releaseNotification = resolve;
+    });
+
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '20000000',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+            unreadCount: 3,
+          },
+        ]),
+      ),
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await chatsLoaded;
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 404,
+          body: incomingTextNotification({
+            chatId: '20000000',
+            idMessage: 'unread-message',
+            text: 'Новое сообщение',
+          }),
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const chat = await screen.findByRole('button', { name: /Сергей/ });
+
+    expect(within(chat).getByLabelText('Непрочитанных сообщений: 3')).toHaveTextContent(
+      '3',
+    );
+
+    releaseNotification?.();
+
+    expect(
+      await within(chat).findByLabelText('Непрочитанных сообщений: 4'),
+    ).toHaveTextContent('4');
+
+    await user.click(chat);
+
+    expect(
+      within(chat).queryByLabelText(/Непрочитанных сообщений:/),
+    ).not.toBeInTheDocument();
+  });
+
   it('aborts the active ReceiveNotification request on disconnect', async () => {
     let requestStarted = false;
     let requestAborted = false;
@@ -319,7 +624,9 @@ describe('creating a chat', () => {
     expect(
       await screen.findByRole('heading', { name: '+7 999 123-45-67' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Начните переписку')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Начните переписку', {}, { timeout: 2_500 }),
+    ).toBeInTheDocument();
   });
 
   it('shows an error when the MAX account does not exist', async () => {
@@ -368,6 +675,49 @@ describe('sending a message', () => {
     expect(screen.getByTitle('Отправляется')).toBeInTheDocument();
     expect(await screen.findByTitle('Отправлено')).toBeInTheDocument();
     expect(screen.getByLabelText('Сообщение')).toHaveValue('');
+  });
+
+  it('updates an outgoing message when a read status notification arrives', async () => {
+    let releaseStatus: (() => void) | undefined;
+    let statusDelivered = false;
+    const messageSent = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+
+    server.use(
+      http.post(sendMessageEndpoint, () => {
+        releaseStatus?.();
+        return HttpResponse.json({ idMessage: 'outgoing-read' });
+      }),
+      http.get(receiveNotificationEndpoint, async () => {
+        if (statusDelivered) {
+          await delay('infinite');
+        }
+
+        await messageSent;
+        await delay(100);
+        statusDelivered = true;
+        return HttpResponse.json({
+          receiptId: 202,
+          body: {
+            typeWebhook: 'outgoingMessageStatus',
+            chatId: '10000000',
+            timestamp: 1763115112,
+            idMessage: 'outgoing-read',
+            status: 'read',
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+    await connect(user);
+    await createChat(user);
+
+    await user.type(screen.getByLabelText('Сообщение'), 'Привет{Enter}');
+
+    expect(await screen.findByTitle('Прочитано')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
   });
 
   it('retries a failed message without adding a duplicate', async () => {
@@ -434,6 +784,49 @@ describe('receiving messages', () => {
       within(incomingMessage).queryByRole('button', { name: /повторить/i }),
     ).not.toBeInTheDocument();
     await waitFor(() => expect(deletedReceiptId).toBe('1234567'));
+  });
+
+  it('shows an incoming media message as an external link', async () => {
+    let notificationDelivered = false;
+
+    server.use(
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await delay(300);
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 1234568,
+          body: {
+            typeWebhook: 'incomingMessageReceived',
+            timestamp: 1763115112,
+            idMessage: 'incoming-image',
+            senderData: { chatId: '10000000' },
+            messageData: {
+              typeMessage: 'imageMessage',
+              fileMessageData: {
+                downloadUrl: 'https://media.example.com/image.webp',
+                caption: 'Фотография',
+              },
+            },
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+    await connect(user);
+    await createChat(user);
+
+    const mediaLink = await screen.findByRole('link', {
+      name: 'Открыть медиафайл',
+    });
+    expect(mediaLink).toHaveAttribute('href', 'https://media.example.com/image.webp');
+    expect(
+      within(mediaLink.closest('article')!).getByText('Фотография'),
+    ).toBeInTheDocument();
   });
 
   it('does not render duplicate incoming messages', async () => {

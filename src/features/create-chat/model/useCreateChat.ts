@@ -1,5 +1,6 @@
 import { useApp } from '../../../app/useApp';
 import { checkAccount } from '../../../shared/api/checkAccount';
+import { getAvatar } from '../../../shared/api/getAvatar';
 import { GreenApiError } from '../../../shared/api/greenApiError';
 import { formatPhoneNumber } from './phone';
 
@@ -36,13 +37,41 @@ export function useCreateChat() {
       });
     }
 
+    const existingChat = state.chats.find((chat) => chat.chatId === result.chatId);
+    const chat = existingChat ?? {
+      chatId: result.chatId,
+      phoneNumber,
+      displayName: formatPhoneNumber(phoneNumber),
+      avatarStatus: 'loading' as const,
+    };
+
     dispatch({
       type: 'open-chat',
-      payload: {
-        chatId: result.chatId,
-        phoneNumber,
-        displayName: formatPhoneNumber(phoneNumber),
-      },
+      payload: chat,
     });
+
+    if (
+      existingChat?.avatarStatus === 'ready' ||
+      existingChat?.avatarStatus === 'loading'
+    ) {
+      return;
+    }
+
+    void getAvatar({
+      credentials: state.credentials,
+      chatId: result.chatId,
+    })
+      .then((avatarUrl) => {
+        dispatch({
+          type: 'chat-avatar-loaded',
+          payload: { chatId: result.chatId, avatarUrl },
+        });
+      })
+      .catch(() => {
+        dispatch({
+          type: 'chat-avatar-failed',
+          payload: { chatId: result.chatId },
+        });
+      });
   };
 }

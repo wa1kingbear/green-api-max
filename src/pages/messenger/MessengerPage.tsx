@@ -6,12 +6,15 @@ import {
   SignOutIcon,
   UserCircleIcon,
   WarningCircleIcon,
+  XIcon,
 } from '@phosphor-icons/react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
 import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
+import { useLoadChatHistory } from '../../features/load-chat-history/model/useLoadChatHistory';
+import { useLoadChats } from '../../features/load-chats/model/useLoadChats';
 import { useReceiveMessages } from '../../features/receive-messages/model/useReceiveMessages';
 import { useSendMessage } from '../../features/send-message/model/useSendMessage';
 import { IconButton } from '../../shared/ui/IconButton/IconButton';
@@ -19,16 +22,111 @@ import { MessageComposer } from '../../widgets/message-composer/MessageComposer'
 import { MessageList } from '../../widgets/message-list/MessageList';
 import styles from './MessengerPage.module.css';
 
+interface ChatAvatarProps {
+  avatarStatus?: string;
+  avatarUrl?: string;
+  className: string;
+  iconSize: number;
+  lazy?: boolean;
+}
+
+function ChatAvatar({
+  avatarStatus,
+  avatarUrl,
+  className,
+  iconSize,
+  lazy = false,
+}: ChatAvatarProps) {
+  return (
+    <span className={className} aria-hidden="true">
+      {avatarStatus === 'loading' && !avatarUrl ? (
+        <span className={styles.avatarSkeleton} />
+      ) : (
+        <UserCircleIcon size={iconSize} weight="fill" />
+      )}
+      {avatarUrl && (
+        <img
+          alt=""
+          className={styles.avatarImage}
+          decoding="async"
+          loading={lazy ? 'lazy' : 'eager'}
+          onError={(event) => {
+            event.currentTarget.style.display = 'none';
+          }}
+          referrerPolicy="no-referrer"
+          src={avatarUrl}
+        />
+      )}
+    </span>
+  );
+}
+
+function getChatPreview(chat: { lastMessage?: string; previewStatus?: string }) {
+  if (chat.lastMessage) {
+    return chat.lastMessage;
+  }
+
+  if (chat.previewStatus === 'error') {
+    return 'Не удалось загрузить сообщение';
+  }
+
+  return 'Сообщений пока нет';
+}
+
+function chatMatchesSearch(
+  chat: {
+    chatId: string;
+    displayName: string;
+    phoneNumber: string;
+    lastMessage?: string;
+  },
+  query: string,
+) {
+  const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const queryDigits = query.replace(/\D/g, '');
+  const phoneDigits = chat.phoneNumber.replace(/\D/g, '');
+  const phoneSearchVariants = [queryDigits];
+
+  if (queryDigits.length > 1 && queryDigits.startsWith('8')) {
+    phoneSearchVariants.push(`7${queryDigits.slice(1)}`);
+  }
+
+  if (queryDigits.length > 1 && queryDigits.startsWith('7')) {
+    phoneSearchVariants.push(`8${queryDigits.slice(1)}`);
+  }
+
+  return (
+    chat.displayName.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    chat.lastMessage?.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    chat.chatId.toLocaleLowerCase('ru-RU').includes(normalizedQuery) ||
+    (queryDigits.length > 0 &&
+      phoneSearchVariants.some((phoneQuery) => phoneDigits.includes(phoneQuery)))
+  );
+}
+
 export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
   const { sendMessage, retryMessage } = useSendMessage();
   useReceiveMessages();
+  const { reloadChats } = useLoadChats();
+  const { hasMore, isLoadingMore, loadMoreFailed, loadMoreHistory, reloadHistory } =
+    useLoadChatHistory();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
+  const [searchQuery, setSearchQuery] = useState('');
   const newChatTriggerRef = useRef<HTMLElement | null>(null);
-  const latestMessage = state.messages.at(-1);
   const isConnectionDegraded = state.connection === 'degraded';
+  const filteredChats = useMemo(
+    () => state.chats.filter((chat) => chatMatchesSearch(chat, searchQuery)),
+    [searchQuery, state.chats],
+  );
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   const openNewChatDialog = () => {
     newChatTriggerRef.current =
@@ -44,6 +142,11 @@ export function MessengerPage() {
   const handleCreateChat = async (phoneNumber: string) => {
     await createChat(phoneNumber);
     newChatTriggerRef.current = null;
+    setIsMobileChatOpen(true);
+  };
+
+  const openChat = (chat: (typeof state.chats)[number]) => {
+    dispatch({ type: 'open-chat', payload: chat });
     setIsMobileChatOpen(true);
   };
 
@@ -91,26 +194,123 @@ export function MessengerPage() {
             </IconButton>
           </header>
 
-          <label className={styles.search}>
+          <div className={styles.search}>
             <MagnifyingGlassIcon size={21} aria-hidden="true" />
-            <span className={styles.visuallyHidden}>Найти чат</span>
-            <input disabled placeholder="Найти" type="search" />
-          </label>
-
-          {state.activeChat ? (
-            <section className={styles.chatList} aria-label="Список чатов">
+            <label className={styles.visuallyHidden} htmlFor="chat-search">
+              Найти чат
+            </label>
+            <input
+              aria-controls="chat-list"
+              autoComplete="off"
+              disabled={state.chats.length === 0}
+              id="chat-search"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' && searchQuery) {
+                  setSearchQuery('');
+                }
+              }}
+              placeholder="Найти"
+              type="search"
+              value={searchQuery}
+            />
+            {hasSearchQuery && (
               <button
-                className={styles.chatItem}
-                onClick={() => setIsMobileChatOpen(true)}
+                aria-label="Очистить поиск"
+                className={styles.searchClear}
+                onClick={() => setSearchQuery('')}
                 type="button"
               >
-                <span className={styles.chatAvatar} aria-hidden="true">
-                  <UserCircleIcon size={42} weight="fill" />
-                </span>
-                <span className={styles.chatSummary}>
-                  <strong>{state.activeChat.displayName}</strong>
-                  <span>{latestMessage?.text ?? 'Чат создан'}</span>
-                </span>
+                <XIcon size={17} weight="bold" />
+              </button>
+            )}
+          </div>
+
+          {state.chats.length > 0 ? (
+            filteredChats.length > 0 ? (
+              <section
+                className={styles.chatList}
+                id="chat-list"
+                aria-label="Список чатов"
+              >
+                {filteredChats.map((chat) => (
+                  <button
+                    aria-current={
+                      state.activeChat?.chatId === chat.chatId ? 'page' : undefined
+                    }
+                    className={`${styles.chatItem} ${
+                      state.activeChat?.chatId === chat.chatId
+                        ? styles.chatItemActive
+                        : ''
+                    } ${chat.unreadCount ? styles.chatItemUnread : ''}`}
+                    key={chat.chatId}
+                    onClick={() => openChat(chat)}
+                    type="button"
+                  >
+                    <ChatAvatar
+                      avatarStatus={chat.avatarStatus}
+                      avatarUrl={chat.avatarUrl}
+                      className={styles.chatAvatar}
+                      iconSize={42}
+                      lazy
+                    />
+                    <span className={styles.chatSummary}>
+                      <strong>{chat.displayName}</strong>
+                      {chat.previewStatus === 'loading' && !chat.lastMessage ? (
+                        <span
+                          aria-label="Загружается последнее сообщение"
+                          className={styles.chatPreviewSkeleton}
+                        />
+                      ) : (
+                        <span>{getChatPreview(chat)}</span>
+                      )}
+                    </span>
+                    {Boolean(chat.unreadCount) && (
+                      <span
+                        aria-label={`Непрочитанных сообщений: ${chat.unreadCount}`}
+                        className={styles.unreadBadge}
+                      >
+                        {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </section>
+            ) : (
+              <section className={styles.searchEmpty} role="status">
+                <MagnifyingGlassIcon size={34} aria-hidden="true" />
+                <h2>Ничего не найдено</h2>
+                <p>Попробуйте изменить имя или номер телефона.</p>
+                <button
+                  className={styles.secondaryButton}
+                  onClick={() => setSearchQuery('')}
+                  type="button"
+                >
+                  Сбросить поиск
+                </button>
+              </section>
+            )
+          ) : state.chatsStatus === 'loading' ? (
+            <section
+              className={styles.listState}
+              aria-label="Список чатов"
+              role="status"
+            >
+              <span className={styles.loadingDot} aria-hidden="true" />
+              <h2>Загружаем чаты</h2>
+              <p>Получаем список диалогов из MAX.</p>
+            </section>
+          ) : state.chatsStatus === 'error' ? (
+            <section className={styles.listState} aria-label="Список чатов">
+              <WarningCircleIcon size={42} weight="fill" aria-hidden="true" />
+              <h2>Не удалось загрузить чаты</h2>
+              <p>{state.chatsError?.message}</p>
+              <button
+                className={styles.secondaryButton}
+                onClick={reloadChats}
+                type="button"
+              >
+                Повторить
               </button>
             </section>
           ) : (
@@ -154,9 +354,12 @@ export function MessengerPage() {
                 >
                   <ArrowLeftIcon size={25} weight="bold" />
                 </IconButton>
-                <span className={styles.headerAvatar} aria-hidden="true">
-                  <UserCircleIcon size={38} weight="fill" />
-                </span>
+                <ChatAvatar
+                  avatarStatus={state.activeChat.avatarStatus}
+                  avatarUrl={state.activeChat.avatarUrl}
+                  className={styles.headerAvatar}
+                  iconSize={38}
+                />
                 <div>
                   <h2>{state.activeChat.displayName}</h2>
                   <span>MAX</span>
@@ -171,7 +374,35 @@ export function MessengerPage() {
                   </span>
                 </div>
               )}
-              <MessageList messages={state.messages} onRetry={retryMessage} />
+              {state.historyStatus === 'loading' && state.messages.length === 0 ? (
+                <div className={styles.historyState} role="status">
+                  <span className={styles.loadingDot} aria-hidden="true" />
+                  <h2>Загружаем переписку</h2>
+                  <p>Получаем последние сообщения из MAX.</p>
+                </div>
+              ) : state.historyStatus === 'error' && state.messages.length === 0 ? (
+                <div className={styles.historyState}>
+                  <WarningCircleIcon size={42} weight="fill" aria-hidden="true" />
+                  <h2>Не удалось загрузить переписку</h2>
+                  <p>{state.historyError?.message}</p>
+                  <button
+                    className={styles.secondaryButton}
+                    onClick={reloadHistory}
+                    type="button"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              ) : (
+                <MessageList
+                  canLoadMore={hasMore}
+                  isLoadingMore={isLoadingMore}
+                  loadMoreFailed={loadMoreFailed}
+                  messages={state.messages}
+                  onLoadMore={loadMoreHistory}
+                  onRetry={retryMessage}
+                />
+              )}
               <MessageComposer onSend={sendMessage} />
             </>
           ) : (
@@ -195,10 +426,7 @@ export function MessengerPage() {
       </main>
 
       {isNewChatOpen && (
-        <NewChatDialog
-          onClose={closeNewChatDialog}
-          onCreate={handleCreateChat}
-        />
+        <NewChatDialog onClose={closeNewChatDialog} onCreate={handleCreateChat} />
       )}
     </>
   );

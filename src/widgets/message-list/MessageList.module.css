@@ -1,7 +1,16 @@
+.viewport {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
 .list {
+  min-width: 0;
   min-height: 0;
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-color: rgb(42 92 122 / 28%) transparent;
 }
 
@@ -14,6 +23,104 @@
   flex-direction: column;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.historyControl {
+  display: flex;
+  padding: 0 0 10px;
+  justify-content: center;
+}
+
+.loadMoreButton {
+  display: inline-flex;
+  min-height: 36px;
+  padding: 0 14px;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  color: #276884;
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid rgb(84 151 184 / 18%);
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgb(31 88 122 / 9%);
+  font-size: 13px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.loadMoreButton:not(:disabled):hover {
+  color: var(--accent);
+  background: #fff;
+  box-shadow: 0 6px 20px rgb(31 88 122 / 14%);
+}
+
+.loadMoreButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.loadMoreSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(39 104 132 / 22%);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: load-more-spin 700ms linear infinite;
+}
+
+.dateSeparator {
+  display: flex;
+  margin: 7px 0 5px;
+  align-items: center;
+  justify-content: center;
+  color: #4e7183;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dateSeparator span {
+  padding: 6px 10px;
+  background: rgb(255 255 255 / 68%);
+  border: 1px solid rgb(65 126 157 / 10%);
+  border-radius: 999px;
+  box-shadow: 0 2px 9px rgb(31 88 122 / 6%);
+  backdrop-filter: blur(7px);
+}
+
+.scrollToBottomButton {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  z-index: 2;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  color: #28789d;
+  background: rgb(255 255 255 / 94%);
+  border: 1px solid rgb(68 137 170 / 16%);
+  border-radius: 50%;
+  box-shadow: 0 8px 24px rgb(29 82 113 / 20%);
+  backdrop-filter: blur(9px);
+  animation: scroll-button-in 160ms ease-out;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.scrollToBottomButton:hover {
+  color: var(--accent);
+  background: #fff;
+  box-shadow: 0 10px 28px rgb(29 82 113 / 26%);
+  transform: translateY(-1px);
 }
 
 .message {
@@ -49,6 +156,41 @@
   line-height: 1.42;
 }
 
+.mediaLink {
+  display: inline-flex;
+  min-height: 34px;
+  margin-top: 1px;
+  padding: 0 13px;
+  align-items: center;
+  justify-content: center;
+  color: #087eaf;
+  background: rgb(255 255 255 / 72%);
+  border: 1px solid rgb(26 140 188 / 18%);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.message p + .mediaLink {
+  margin-top: 8px;
+}
+
+.mediaLink:hover {
+  color: #05658e;
+  background: #fff;
+  border-color: rgb(26 140 188 / 32%);
+}
+
+.mediaLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .message footer {
   display: flex;
   min-height: 17px;
@@ -63,6 +205,23 @@
 .status {
   display: inline-flex;
   color: #1394d0;
+}
+
+.statusDelivered {
+  color: #72828d;
+}
+
+.statusRead {
+  color: #1394d0;
+}
+
+.doubleCheck {
+  display: inline-flex;
+  align-items: center;
+}
+
+.doubleCheck svg + svg {
+  margin-left: -12px;
 }
 
 .retryButton {
@@ -120,6 +279,27 @@
   }
 }
 
+@keyframes load-more-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes scroll-button-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.94);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadMoreSpinner,
+  .message,
+  .scrollToBottomButton {
+    animation: none;
+  }
+}
+
 @media (max-width: 768px) {
   .inner {
     padding: 20px 12px 10px;
@@ -127,5 +307,10 @@
 
   .message {
     max-width: 84%;
+  }
+
+  .scrollToBottomButton {
+    right: 12px;
+    bottom: 12px;
   }
 }
