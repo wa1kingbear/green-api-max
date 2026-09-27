@@ -1,6 +1,6 @@
 import { HttpResponse, delay, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { App } from '../../app/App';
@@ -31,7 +31,10 @@ const server = setupServer(
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.unstubAllGlobals();
+});
 afterAll(() => server.close());
 
 function renderApp() {
@@ -93,6 +96,60 @@ function incomingTextNotification({
 }
 
 describe('messenger integration', () => {
+  it('restores the active chat from the URL after a page reload', async () => {
+    const urlTestIdInstance = '1101000099';
+    const urlTestToken = 'url-test-token';
+    const urlTestInstancePath = `${GREEN_API_BASE_URL}/waInstance${urlTestIdInstance}`;
+
+    server.use(
+      http.get(`${urlTestInstancePath}/getSettings/${urlTestToken}`, () =>
+        HttpResponse.json({ incomingWebhook: 'yes', webhookUrl: '' }),
+      ),
+      http.get(`${urlTestInstancePath}/getChats/${urlTestToken}`, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+        ]),
+      ),
+      http.post(`${urlTestInstancePath}/getAvatar/${urlTestToken}`, () =>
+        HttpResponse.json({ urlAvatar: '' }),
+      ),
+      http.post(`${urlTestInstancePath}/getChatHistory/${urlTestToken}`, () =>
+        HttpResponse.json([]),
+      ),
+      http.get(
+        `${urlTestInstancePath}/receiveNotification/${urlTestToken}`,
+        async () => {
+          await delay('infinite');
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    const firstRender = renderApp();
+
+    await user.type(screen.getByLabelText('ID инстанса'), urlTestIdInstance);
+    await user.type(screen.getByLabelText('API-токен инстанса'), urlTestToken);
+    await user.click(screen.getByRole('button', { name: 'Подключиться' }));
+    await screen.findByRole('heading', { name: 'Чаты' });
+    await user.click(await screen.findByRole('button', { name: /Анна/ }));
+
+    expect(window.location.search).toBe('?chatId=10000000');
+    expect(screen.getByRole('heading', { name: 'Анна' })).toBeInTheDocument();
+
+    firstRender.unmount();
+    renderApp();
+
+    expect(await screen.findByRole('heading', { name: 'Анна' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Анна/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
   it('loads personal chats and the selected chat history', async () => {
     server.use(
       http.get(getChatsEndpoint, () =>
@@ -171,6 +228,131 @@ describe('messenger integration', () => {
     expect(articles).toHaveLength(2);
     expect(articles[0]).toHaveTextContent('Старое сообщение');
     expect(articles[1]).toHaveTextContent('Новое сообщение');
+  });
+
+  it('loads previews only when a chat approaches the visible area', async () => {
+    let observerCallback: IntersectionObserverCallback | undefined;
+    const observedItems: Element[] = [];
+    const historyRequests: string[] = [];
+
+    class TestIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '240px 0px';
+      readonly scrollMargin = '0px';
+      readonly thresholds = [0];
+
+      constructor(callback: IntersectionObserverCallback) {
+        observerCallback = callback;
+      }
+
+      disconnect() {}
+
+      observe(target: Element) {
+        observedItems.push(target);
+      }
+
+      takeRecords() {
+        return [];
+      }
+
+      unobserve() {}
+    }
+
+    vi.stubGlobal('IntersectionObserver', TestIntersectionObserver);
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '10000001',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { chatId: string };
+        historyRequests.push(body.chatId);
+        return HttpResponse.json([]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await waitFor(() => expect(observedItems).toHaveLength(2));
+    expect(historyRequests).toEqual([]);
+
+    observerCallback?.(
+      [
+        {
+          isIntersecting: true,
+          target: observedItems[0]!,
+        } as IntersectionObserverEntry,
+      ],
+      {} as IntersectionObserver,
+    );
+
+    await waitFor(() => expect(historyRequests).toEqual(['10000000']), {
+      timeout: 2_500,
+    });
+  });
+
+  it('renders only the visible window of a long chat list', async () => {
+    class IdleIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '240px 0px';
+      readonly scrollMargin = '0px';
+      readonly thresholds = [0];
+
+      disconnect() {}
+      observe() {}
+      takeRecords() {
+        return [];
+      }
+      unobserve() {}
+    }
+
+    vi.stubGlobal('IntersectionObserver', IdleIntersectionObserver);
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json(
+          Array.from({ length: 100 }, (_, index) => ({
+            chatId: String(10_000_000 + index),
+            name: `Чат ${index}`,
+            type: 'user',
+            phoneNumber: 79_000_000_000 + index,
+          })),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    const list = await screen.findByLabelText('Список чатов');
+    expect(screen.getByTestId('virtual-chat-list')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button').length).toBeLessThan(25);
+    expect(within(list).getByRole('button', { name: /Чат 0/ })).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /Чат 99/ })).toBeNull();
+
+    Object.defineProperty(list, 'clientHeight', {
+      configurable: true,
+      value: 400,
+    });
+    list.scrollTop = 7_600;
+    fireEvent.scroll(list);
+
+    expect(
+      await within(list).findByRole('button', { name: /Чат 99/ }),
+    ).toBeInTheDocument();
+    expect(within(list).queryByRole('button', { name: /Чат 0/ })).toBeNull();
   });
 
   it('shows a skeleton while the chat preview is loading', async () => {
@@ -279,8 +461,9 @@ describe('messenger integration', () => {
   });
 
   it('loads older messages on demand', async () => {
-    const history = Array.from({ length: 101 }, (_, index) => {
-      const messageNumber = 101 - index;
+    const requestedCounts: number[] = [];
+    const history = Array.from({ length: 201 }, (_, index) => {
+      const messageNumber = 201 - index;
 
       return {
         type: messageNumber % 2 === 0 ? 'outgoing' : 'incoming',
@@ -303,6 +486,7 @@ describe('messenger integration', () => {
       ),
       http.post(getChatHistoryEndpoint, async ({ request }) => {
         const body = (await request.json()) as { count: number };
+        requestedCounts.push(body.count);
         return HttpResponse.json(history.slice(0, body.count));
       }),
     );
@@ -320,10 +504,19 @@ describe('messenger integration', () => {
     expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
 
     await user.click(loadMoreButton);
+    await waitFor(() => expect(requestedCounts).toEqual([100, 200]), {
+      timeout: 2_500,
+    });
+    expect(screen.queryByText('Сообщение 1')).not.toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Загрузить еще сообщения' }),
+    );
 
     expect(
       await screen.findByText('Сообщение 1', {}, { timeout: 3_000 }),
     ).toBeInTheDocument();
+    expect(requestedCounts).toEqual([100, 200, 400]);
     expect(
       screen.queryByRole('button', { name: 'Загрузить еще сообщения' }),
     ).not.toBeInTheDocument();
@@ -624,6 +817,7 @@ describe('creating a chat', () => {
     expect(
       await screen.findByRole('heading', { name: '+7 999 123-45-67' }),
     ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Сообщение')).toHaveFocus());
     expect(
       await screen.findByText('Начните переписку', {}, { timeout: 2_500 }),
     ).toBeInTheDocument();

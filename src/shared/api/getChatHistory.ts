@@ -7,6 +7,7 @@ interface GetChatHistoryParams {
   chatId: string;
   count?: number;
   apiUrl?: string;
+  priority?: 'foreground' | 'background';
   signal?: AbortSignal;
 }
 
@@ -19,7 +20,16 @@ const HISTORY_REQUEST_INTERVAL_MS = 1_250;
 
 interface HistoryRateLimitState {
   lastStartedAt: number;
-  tail: Promise<void>;
+  processing: boolean;
+  foregroundQueue: HistoryQueueItem[];
+  backgroundQueue: HistoryQueueItem[];
+}
+
+interface HistoryQueueItem {
+  abortHandler?: () => void;
+  reject: (reason?: unknown) => void;
+  resolve: () => void;
+  signal?: AbortSignal;
 }
 
 const historyRateLimits = new Map<string, HistoryRateLimitState>();
@@ -46,31 +56,78 @@ function wait(milliseconds: number, signal?: AbortSignal): Promise<void> {
 
 async function waitForHistoryRequestSlot(
   key: string,
+  priority: 'foreground' | 'background',
   signal?: AbortSignal,
 ): Promise<void> {
   const rateLimit = historyRateLimits.get(key) ?? {
     lastStartedAt: 0,
-    tail: Promise.resolve(),
+    processing: false,
+    foregroundQueue: [],
+    backgroundQueue: [],
   };
   historyRateLimits.set(key, rateLimit);
 
-  const previousRequest = rateLimit.tail;
-  let releaseRequest: () => void = () => undefined;
-  rateLimit.tail = new Promise<void>((resolve) => {
-    releaseRequest = resolve;
-  });
+  return new Promise<void>((resolve, reject) => {
+    const queue =
+      priority === 'foreground' ? rateLimit.foregroundQueue : rateLimit.backgroundQueue;
+    const item: HistoryQueueItem = { reject, resolve, signal };
+    queue.push(item);
 
-  await previousRequest;
+    if (signal) {
+      item.abortHandler = () => {
+        const queuedIndex = queue.indexOf(item);
+
+        if (queuedIndex >= 0) {
+          queue.splice(queuedIndex, 1);
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        }
+      };
+      signal.addEventListener('abort', item.abortHandler, { once: true });
+    }
+
+    void processHistoryQueue(rateLimit);
+  });
+}
+
+async function processHistoryQueue(rateLimit: HistoryRateLimitState): Promise<void> {
+  if (rateLimit.processing) {
+    return;
+  }
+
+  rateLimit.processing = true;
 
   try {
-    const remainingDelay = Math.max(
-      0,
-      rateLimit.lastStartedAt + HISTORY_REQUEST_INTERVAL_MS - Date.now(),
-    );
-    await wait(remainingDelay, signal);
-    rateLimit.lastStartedAt = Date.now();
+    while (rateLimit.foregroundQueue.length || rateLimit.backgroundQueue.length) {
+      const item =
+        rateLimit.foregroundQueue.shift() ?? rateLimit.backgroundQueue.shift();
+
+      if (!item) {
+        continue;
+      }
+
+      if (item.abortHandler) {
+        item.signal?.removeEventListener('abort', item.abortHandler);
+      }
+
+      if (item.signal?.aborted) {
+        item.reject(new DOMException('The operation was aborted.', 'AbortError'));
+        continue;
+      }
+
+      try {
+        const remainingDelay = Math.max(
+          0,
+          rateLimit.lastStartedAt + HISTORY_REQUEST_INTERVAL_MS - Date.now(),
+        );
+        await wait(remainingDelay, item.signal);
+        rateLimit.lastStartedAt = Date.now();
+        item.resolve();
+      } catch (error) {
+        item.reject(error);
+      }
+    }
   } finally {
-    releaseRequest();
+    rateLimit.processing = false;
   }
 }
 
@@ -173,10 +230,15 @@ export async function getChatHistoryPage({
   chatId,
   count = 100,
   apiUrl = GREEN_API_BASE_URL,
+  priority = 'foreground',
   signal,
 }: GetChatHistoryParams): Promise<ChatHistoryPage> {
   const baseUrl = apiUrl.replace(/\/+$/, '');
-  await waitForHistoryRequestSlot(`${baseUrl}|${credentials.idInstance}`, signal);
+  await waitForHistoryRequestSlot(
+    `${baseUrl}|${credentials.idInstance}`,
+    priority,
+    signal,
+  );
 
   const path = [
     `waInstance${encodeURIComponent(credentials.idInstance)}`,

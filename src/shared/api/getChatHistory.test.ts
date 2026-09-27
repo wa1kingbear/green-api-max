@@ -206,4 +206,46 @@ describe('getChatHistory', () => {
     expect(requestStartedAt).toHaveLength(2);
     expect(requestStartedAt[1]! - requestStartedAt[0]!).toBeGreaterThanOrEqual(1_200);
   });
+
+  it('prioritizes an opened chat over queued background previews', async () => {
+    const priorityCredentials = {
+      idInstance: '1101000099',
+      apiTokenInstance: 'priority-token',
+    };
+    const priorityEndpoint = `${apiUrl}/waInstance1101000099/getChatHistory/priority-token`;
+    const requestOrder: string[] = [];
+
+    server.use(
+      http.post(priorityEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { chatId: string };
+        requestOrder.push(body.chatId);
+        return HttpResponse.json([]);
+      }),
+    );
+
+    await Promise.all([
+      getChatHistory({
+        apiUrl,
+        credentials: priorityCredentials,
+        chatId: 'background-1',
+        count: 1,
+        priority: 'background',
+      }),
+      getChatHistory({
+        apiUrl,
+        credentials: priorityCredentials,
+        chatId: 'background-2',
+        count: 1,
+        priority: 'background',
+      }),
+      getChatHistory({
+        apiUrl,
+        credentials: priorityCredentials,
+        chatId: 'foreground',
+        count: 100,
+      }),
+    ]);
+
+    expect(requestOrder).toEqual(['background-1', 'foreground', 'background-2']);
+  });
 });

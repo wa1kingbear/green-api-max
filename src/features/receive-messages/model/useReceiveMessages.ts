@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 
-import { useApp } from '../../../app/useApp';
+import {
+  useAppDispatch,
+  useProcessedMessageIds,
+  useSessionState,
+} from '../../../app/useApp';
 import { deleteNotification } from '../../../shared/api/deleteNotification';
 import { receiveNotification } from '../../../shared/api/receiveNotification';
 import { parseIncomingMessage, parseOutgoingMessageStatus } from './notification';
@@ -9,16 +13,16 @@ import { runPolling, startPollingSession } from './polling';
 const RECEIVE_TIMEOUT_SECONDS = 10;
 
 export function useReceiveMessages() {
-  const { state, dispatch } = useApp();
-  const processedMessageIdsRef = useRef(state.processedMessageIds);
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
+  const processedMessageIds = useProcessedMessageIds();
+  const processedMessageIdsRef = useRef(processedMessageIds);
 
   useEffect(() => {
-    processedMessageIdsRef.current = state.processedMessageIds;
-  }, [state.processedMessageIds]);
+    processedMessageIdsRef.current = processedMessageIds;
+  }, [processedMessageIds]);
 
   useEffect(() => {
-    const credentials = state.credentials;
-
     if (!credentials) {
       return undefined;
     }
@@ -57,5 +61,5 @@ export function useReceiveMessages() {
         onRecovered: () => dispatch({ type: 'polling-recovered' }),
       }),
     );
-  }, [dispatch, state.credentials]);
+  }, [credentials, dispatch]);
 }

@@ -1,15 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { AppError, Chat } from '../../../app/model';
-import { useApp } from '../../../app/useApp';
+import type {
+  AppError,
+  Chat,
+  ChatDetailsUpdate,
+  Credentials,
+} from '../../../app/model';
+import { useAppDispatch, useSessionState } from '../../../app/useApp';
 import { getAvatar } from '../../../shared/api/getAvatar';
 import { getChatHistory } from '../../../shared/api/getChatHistory';
 import { getChats } from '../../../shared/api/getChats';
 import { isGreenApiError } from '../../../shared/api/greenApiError';
 import { formatPhoneNumber } from '../../create-chat/model/phone';
 
-const PREVIEW_REQUEST_CONCURRENCY = 1;
-const AVATAR_REQUEST_CONCURRENCY = 1;
+interface ChatDetailsRuntime {
+  chatsById: Map<string, Chat>;
+  controller: AbortController;
+  credentials: Credentials;
+  flushTimeoutId: number | null;
+  pendingUpdates: Map<string, ChatDetailsUpdate>;
+  requestedAvatars: Set<string>;
+  requestedPreviews: Set<string>;
+}
+
+const DETAILS_UPDATE_BATCH_MS = 100;
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -33,13 +47,136 @@ function normalizeError(error: unknown): AppError {
 }
 
 export function useLoadChats() {
-  const { state, dispatch } = useApp();
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
   const [reloadVersion, setReloadVersion] = useState(0);
+  const runtimeRef = useRef<ChatDetailsRuntime | null>(null);
   const reloadChats = useCallback(() => setReloadVersion((value) => value + 1), []);
 
-  useEffect(() => {
-    const credentials = state.credentials;
+  const queueChatDetailsUpdate = useCallback(
+    (runtime: ChatDetailsRuntime, update: ChatDetailsUpdate) => {
+      const pendingUpdate = runtime.pendingUpdates.get(update.chatId);
+      runtime.pendingUpdates.set(update.chatId, {
+        chatId: update.chatId,
+        avatar: update.avatar ?? pendingUpdate?.avatar,
+        preview: update.preview ?? pendingUpdate?.preview,
+      });
 
+      if (runtime.flushTimeoutId !== null) {
+        return;
+      }
+
+      runtime.flushTimeoutId = window.setTimeout(() => {
+        runtime.flushTimeoutId = null;
+
+        if (runtime.controller.signal.aborted || runtime.pendingUpdates.size === 0) {
+          runtime.pendingUpdates.clear();
+          return;
+        }
+
+        const updates = [...runtime.pendingUpdates.values()];
+        runtime.pendingUpdates.clear();
+        dispatch({ type: 'chat-details-updated', payload: updates });
+      }, DETAILS_UPDATE_BATCH_MS);
+    },
+    [dispatch],
+  );
+
+  const loadChatPreview = useCallback(
+    (runtime: ChatDetailsRuntime, chat: Chat) => {
+      if (runtime.requestedPreviews.has(chat.chatId)) {
+        return;
+      }
+
+      runtime.requestedPreviews.add(chat.chatId);
+      void getChatHistory({
+        credentials: runtime.credentials,
+        chatId: chat.chatId,
+        count: 1,
+        priority: 'background',
+        signal: runtime.controller.signal,
+      })
+        .then((messages) => {
+          if (!runtime.controller.signal.aborted) {
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              preview: {
+                status: 'ready',
+                message: messages.at(-1) ?? null,
+              },
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (!runtime.controller.signal.aborted && !isAbortError(error)) {
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              preview: { status: 'error' },
+            });
+          }
+        });
+    },
+    [queueChatDetailsUpdate],
+  );
+
+  const loadChatAvatar = useCallback(
+    (runtime: ChatDetailsRuntime, chat: Chat) => {
+      if (runtime.requestedAvatars.has(chat.chatId)) {
+        return;
+      }
+
+      runtime.requestedAvatars.add(chat.chatId);
+      void getAvatar({
+        credentials: runtime.credentials,
+        chatId: chat.chatId,
+        signal: runtime.controller.signal,
+      })
+        .then((avatarUrl) => {
+          if (!runtime.controller.signal.aborted) {
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              avatar: { status: 'ready', avatarUrl },
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (!runtime.controller.signal.aborted && !isAbortError(error)) {
+            queueChatDetailsUpdate(runtime, {
+              chatId: chat.chatId,
+              avatar: { status: 'error' },
+            });
+          }
+        });
+    },
+    [queueChatDetailsUpdate],
+  );
+
+  const loadChatDetails = useCallback(
+    (chatId: string) => {
+      const runtime = runtimeRef.current;
+      const chat = runtime?.chatsById.get(chatId);
+
+      if (!runtime || !chat || runtime.controller.signal.aborted) {
+        return;
+      }
+
+      loadChatPreview(runtime, chat);
+      loadChatAvatar(runtime, chat);
+    },
+    [loadChatAvatar, loadChatPreview],
+  );
+
+  const loadAllChatPreviews = useCallback(() => {
+    const runtime = runtimeRef.current;
+
+    if (!runtime || runtime.controller.signal.aborted) {
+      return;
+    }
+
+    runtime.chatsById.forEach((chat) => loadChatPreview(runtime, chat));
+  }, [loadChatPreview]);
+
+  useEffect(() => {
     if (!credentials) {
       return undefined;
     }
@@ -61,95 +198,21 @@ export function useLoadChats() {
             displayName:
               chat.name.trim() ||
               (chat.phoneNumber ? formatPhoneNumber(chat.phoneNumber) : 'Чат MAX'),
-            avatarStatus: 'loading',
-            previewStatus: 'loading',
+            avatarStatus: 'idle',
+            previewStatus: 'idle',
             unreadCount: chat.unreadCount,
           }));
 
+        runtimeRef.current = {
+          chatsById: new Map(chats.map((chat) => [chat.chatId, chat])),
+          controller,
+          credentials,
+          flushTimeoutId: null,
+          pendingUpdates: new Map(),
+          requestedAvatars: new Set(),
+          requestedPreviews: new Set(),
+        };
         dispatch({ type: 'chats-loaded', payload: chats });
-
-        let nextChatIndex = 0;
-
-        const loadNextPreview = async () => {
-          while (!controller.signal.aborted) {
-            const chat = chats[nextChatIndex];
-            nextChatIndex += 1;
-
-            if (!chat) {
-              return;
-            }
-
-            try {
-              const messages = await getChatHistory({
-                credentials,
-                chatId: chat.chatId,
-                count: 1,
-                signal: controller.signal,
-              });
-
-              if (!controller.signal.aborted) {
-                dispatch({
-                  type: 'chat-preview-loaded',
-                  payload: { chatId: chat.chatId, message: messages.at(-1) ?? null },
-                });
-              }
-            } catch (error: unknown) {
-              if (controller.signal.aborted || isAbortError(error)) {
-                return;
-              }
-
-              dispatch({
-                type: 'chat-preview-failed',
-                payload: { chatId: chat.chatId },
-              });
-            }
-          }
-        };
-
-        const workerCount = Math.min(PREVIEW_REQUEST_CONCURRENCY, chats.length);
-        void Promise.all(Array.from({ length: workerCount }, () => loadNextPreview()));
-
-        let nextAvatarIndex = 0;
-
-        const loadNextAvatar = async () => {
-          while (!controller.signal.aborted) {
-            const chat = chats[nextAvatarIndex];
-            nextAvatarIndex += 1;
-
-            if (!chat) {
-              return;
-            }
-
-            try {
-              const avatarUrl = await getAvatar({
-                credentials,
-                chatId: chat.chatId,
-                signal: controller.signal,
-              });
-
-              if (!controller.signal.aborted) {
-                dispatch({
-                  type: 'chat-avatar-loaded',
-                  payload: { chatId: chat.chatId, avatarUrl },
-                });
-              }
-            } catch (error: unknown) {
-              if (controller.signal.aborted || isAbortError(error)) {
-                return;
-              }
-
-              dispatch({
-                type: 'chat-avatar-failed',
-                payload: { chatId: chat.chatId },
-              });
-            }
-          }
-        };
-
-        const avatarWorkerCount = Math.min(AVATAR_REQUEST_CONCURRENCY, chats.length);
-        void Promise.all(
-          Array.from({ length: avatarWorkerCount }, () => loadNextAvatar()),
-        );
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted && !isAbortError(error)) {
@@ -157,8 +220,21 @@ export function useLoadChats() {
         }
       });
 
-    return () => controller.abort();
-  }, [dispatch, reloadVersion, state.credentials]);
+    return () => {
+      controller.abort();
+      const runtime = runtimeRef.current;
 
-  return { reloadChats };
+      if (runtime?.controller !== controller) {
+        return;
+      }
+
+      if (runtime.flushTimeoutId !== null) {
+        window.clearTimeout(runtime.flushTimeoutId);
+      }
+      runtime.pendingUpdates.clear();
+      runtimeRef.current = null;
+    };
+  }, [credentials, dispatch, reloadVersion]);
+
+  return { loadAllChatPreviews, loadChatDetails, reloadChats };
 }

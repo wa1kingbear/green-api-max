@@ -30,6 +30,15 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
   const messageSent = new Promise<void>((resolve) => {
     releaseNotification = resolve;
   });
+  const existingHistory = Array.from({ length: 100 }, (_, index) => ({
+    type: 'incoming',
+    idMessage: `history-${index}`,
+    timestamp: 1_763_115_000 + index,
+    chatId: '20000000',
+    typeMessage: 'textMessage',
+    textMessage:
+      index === 99 ? 'Сообщение из истории' : `Старое сообщение ${index + 1}`,
+  }));
 
   await page.route(`${apiBaseUrl}/**`, async (route) => {
     const request = route.request();
@@ -64,20 +73,16 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
     }
 
     if (pathname === `${instancePath}/getChatHistory/${apiTokenInstance}`) {
-      const body = request.postDataJSON() as { chatId?: string } | null;
+      const body = request.postDataJSON() as {
+        chatId?: string;
+        count?: number;
+      } | null;
       await fulfillJson(
         route,
         body?.chatId === '20000000'
-          ? [
-              {
-                type: 'incoming',
-                idMessage: 'history-1',
-                timestamp: 1763115000,
-                chatId: '20000000',
-                typeMessage: 'textMessage',
-                textMessage: 'Сообщение из истории',
-              },
-            ]
+          ? body.count === 1
+            ? existingHistory.slice(-1)
+            : existingHistory
           : [],
       );
       return;
@@ -152,6 +157,17 @@ test('creates a chat, sends a message and receives a reply', async ({ page }) =>
   const existingChat = page.getByRole('button', { name: /Анна/ });
   await expect(existingChat.getByText('Сообщение из истории')).toBeVisible();
   await existingChat.click();
+  await expect(
+    page.getByRole('region', { name: 'Переписка' }).getByText('Сообщение из истории'),
+  ).toBeVisible();
+  await expect(page.getByTestId('virtual-message-list')).toBeVisible();
+  await expect
+    .poll(() => page.getByLabel('Сообщения').getByRole('article').count())
+    .toBeLessThan(40);
+  await expect(page).toHaveURL(/\?chatId=20000000$/);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Анна' })).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Переписка' }).getByText('Сообщение из истории'),
   ).toBeVisible();

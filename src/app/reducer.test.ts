@@ -35,6 +35,24 @@ describe('appReducer', () => {
     expect(state.processedMessageIds.size).toBe(0);
   });
 
+  it('closes the active chat without clearing the loaded chat list', () => {
+    const chat = {
+      chatId: '10000000',
+      phoneNumber: '79991234567',
+      displayName: 'Анна',
+    };
+    const openedState = appReducer(initialAppState, {
+      type: 'open-chat',
+      payload: chat,
+    });
+    const state = appReducer(openedState, { type: 'close-chat' });
+
+    expect(state.activeChat).toBeNull();
+    expect(state.chats).toHaveLength(1);
+    expect(state.messages).toEqual([]);
+    expect(state.historyStatus).toBe('idle');
+  });
+
   it('loads chat history and merges messages received while loading', () => {
     const chat = {
       chatId: '10000000',
@@ -254,6 +272,68 @@ describe('appReducer', () => {
     });
   });
 
+  it('applies batched preview and avatar updates in one reducer action', () => {
+    const chats = [
+      {
+        chatId: 'chat-1',
+        phoneNumber: '70000000001',
+        displayName: 'Первый',
+        avatarStatus: 'idle' as const,
+        previewStatus: 'idle' as const,
+      },
+      {
+        chatId: 'chat-2',
+        phoneNumber: '70000000002',
+        displayName: 'Второй',
+        avatarStatus: 'idle' as const,
+        previewStatus: 'idle' as const,
+      },
+    ];
+    const loadedState = appReducer(initialAppState, {
+      type: 'chats-loaded',
+      payload: chats,
+    });
+    const state = appReducer(loadedState, {
+      type: 'chat-details-updated',
+      payload: [
+        {
+          chatId: 'chat-1',
+          avatar: {
+            status: 'ready',
+            avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+          },
+          preview: {
+            status: 'ready',
+            message: {
+              id: 'message-1',
+              chatId: 'chat-1',
+              direction: 'incoming',
+              text: 'Новое сообщение',
+              timestamp: 10,
+              status: 'sent',
+            },
+          },
+        },
+        {
+          chatId: 'chat-2',
+          avatar: { status: 'error' },
+          preview: { status: 'error' },
+        },
+      ],
+    });
+
+    expect(state.chats[0]).toMatchObject({
+      avatarStatus: 'ready',
+      avatarUrl: 'https://i.oneme.ru/avatar.jpg',
+      lastMessage: 'Новое сообщение',
+      previewStatus: 'ready',
+    });
+    expect(state.chats[1]).toMatchObject({
+      avatarStatus: 'error',
+      previewStatus: 'error',
+    });
+  });
+
   it('moves an optimistic message from sending to sent', () => {
     const optimisticMessage = {
       id: 'temp-1',
@@ -321,6 +401,42 @@ describe('appReducer', () => {
     expect(deliveredState.messages[0]?.status).toBe('delivered');
     expect(readState.messages[0]?.status).toBe('read');
     expect(staleState.messages[0]?.status).toBe('read');
+  });
+
+  it('applies a delivery status received before the send response', () => {
+    const sendingState = appReducer(initialAppState, {
+      type: 'add-message',
+      payload: {
+        id: 'temp-1',
+        chatId: 'chat-1',
+        direction: 'outgoing',
+        text: 'Привет',
+        timestamp: 1,
+        status: 'sending',
+      },
+    });
+    const statusReceivedState = appReducer(sendingState, {
+      type: 'message-status-updated',
+      payload: {
+        idMessage: 'message-1',
+        chatId: 'chat-1',
+        status: 'read',
+      },
+    });
+    const sentState = appReducer(statusReceivedState, {
+      type: 'message-sent',
+      payload: { temporaryId: 'temp-1', idMessage: 'message-1' },
+    });
+
+    expect(statusReceivedState.pendingMessageStatuses.get('message-1')).toEqual({
+      chatId: 'chat-1',
+      status: 'read',
+    });
+    expect(sentState.messages[0]).toMatchObject({
+      id: 'message-1',
+      status: 'read',
+    });
+    expect(sentState.pendingMessageStatuses.size).toBe(0);
   });
 
   it('marks a message as failed and returns it to sending on retry', () => {

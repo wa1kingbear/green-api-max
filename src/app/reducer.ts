@@ -1,4 +1,4 @@
-import type { AppAction, AppState } from './model';
+import type { AppAction, AppState, ChatDetailsUpdate } from './model';
 
 function upsertChat(state: AppState, chat: AppState['chats'][number]) {
   const existingChat = state.chats.find((item) => item.chatId === chat.chatId);
@@ -43,6 +43,48 @@ function getMessagePreview(message: AppState['messages'][number]): string {
   return message.text || (message.mediaUrl ? 'Медиафайл' : '');
 }
 
+function applyChatDetailsUpdate(
+  chat: AppState['chats'][number],
+  update: ChatDetailsUpdate | undefined,
+) {
+  if (!update) {
+    return chat;
+  }
+
+  let updatedChat = chat;
+
+  if (update.avatar) {
+    updatedChat = {
+      ...updatedChat,
+      ...(update.avatar.status === 'ready'
+        ? { avatarUrl: update.avatar.avatarUrl ?? undefined }
+        : {}),
+      avatarStatus: update.avatar.status,
+    };
+  }
+
+  if (update.preview) {
+    const message = update.preview.status === 'ready' ? update.preview.message : null;
+    const isNewerMessage =
+      message !== null &&
+      (updatedChat.lastMessageTimestamp === undefined ||
+        message.timestamp >= updatedChat.lastMessageTimestamp);
+
+    updatedChat = {
+      ...updatedChat,
+      ...(isNewerMessage
+        ? {
+            lastMessage: getMessagePreview(message),
+            lastMessageTimestamp: message.timestamp,
+          }
+        : {}),
+      previewStatus: update.preview.status,
+    };
+  }
+
+  return updatedChat;
+}
+
 function mergeMessages(history: AppState['messages'], current: AppState['messages']) {
   const messagesById = new Map(history.map((message) => [message.id, message]));
 
@@ -63,7 +105,11 @@ const MESSAGE_STATUS_RANK = {
 function applyMessageStatus(
   current: AppState['messages'][number]['status'],
   next: Exclude<AppState['messages'][number]['status'], 'sending'>,
-) {
+): Exclude<AppState['messages'][number]['status'], 'sending'> {
+  if (current === 'sending') {
+    return next;
+  }
+
   if (next === 'failed') {
     return current === 'delivered' || current === 'read' ? current : next;
   }
@@ -91,9 +137,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case 'chats-loaded': {
       const loadedChatIds = new Set(action.payload.map((chat) => chat.chatId));
+      const existingChatsById = new Map(state.chats.map((chat) => [chat.chatId, chat]));
       const localChats = state.chats.filter((chat) => !loadedChatIds.has(chat.chatId));
       const chats = action.payload.map((chat) => {
-        const existingChat = state.chats.find((item) => item.chatId === chat.chatId);
+        const existingChat = existingChatsById.get(chat.chatId);
         return existingChat
           ? {
               ...existingChat,
@@ -186,6 +233,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             : chat,
         ),
       };
+    case 'chat-details-updated': {
+      const updatesByChatId = new Map(
+        action.payload.map((update) => [update.chatId, update]),
+      );
+      const applyUpdate = (chat: AppState['chats'][number]) =>
+        applyChatDetailsUpdate(chat, updatesByChatId.get(chat.chatId));
+
+      return {
+        ...state,
+        chats: state.chats.map(applyUpdate),
+        activeChat: state.activeChat ? applyUpdate(state.activeChat) : null,
+      };
+    }
     case 'open-chat': {
       const isSameChat = state.activeChat?.chatId === action.payload.chatId;
       const chat = { ...action.payload, unreadCount: 0 };
@@ -199,6 +259,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         historyError: null,
       };
     }
+    case 'close-chat':
+      return {
+        ...state,
+        activeChat: null,
+        messages: [],
+        historyStatus: 'idle',
+        historyError: null,
+      };
     case 'history-loading':
       if (state.activeChat?.chatId !== action.payload.chatId) {
         return state;
@@ -288,7 +356,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         processedMessageIds,
       };
     }
-    case 'message-sent':
+    case 'message-sent': {
+      const pendingStatus = state.pendingMessageStatuses.get(action.payload.idMessage);
+      const pendingMessageStatuses = new Map(state.pendingMessageStatuses);
+      pendingMessageStatuses.delete(action.payload.idMessage);
+
       return {
         ...state,
         messages: state.messages.map((message) =>
@@ -296,12 +368,48 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             ? {
                 ...message,
                 id: action.payload.idMessage,
-                status: 'sent' as const,
+                status: pendingStatus
+                  ? applyMessageStatus('sent', pendingStatus.status)
+                  : ('sent' as const),
               }
             : message,
         ),
+        pendingMessageStatuses,
       };
-    case 'message-status-updated':
+    }
+    case 'message-status-updated': {
+      const matchingMessage = state.messages.find(
+        (message) =>
+          message.id === action.payload.idMessage &&
+          message.chatId === action.payload.chatId &&
+          message.direction === 'outgoing',
+      );
+
+      if (!matchingMessage) {
+        const isAwaitingMessageId = state.messages.some(
+          (message) =>
+            message.chatId === action.payload.chatId &&
+            message.direction === 'outgoing' &&
+            message.status === 'sending',
+        );
+
+        if (!isAwaitingMessageId) {
+          return state;
+        }
+
+        const pendingMessageStatuses = new Map(state.pendingMessageStatuses);
+        const currentStatus = pendingMessageStatuses.get(action.payload.idMessage);
+        pendingMessageStatuses.set(action.payload.idMessage, {
+          chatId: action.payload.chatId,
+          status:
+            currentStatus?.chatId === action.payload.chatId
+              ? applyMessageStatus(currentStatus.status, action.payload.status)
+              : action.payload.status,
+        });
+
+        return { ...state, pendingMessageStatuses };
+      }
+
       return {
         ...state,
         messages: state.messages.map((message) =>
@@ -315,6 +423,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             : message,
         ),
       };
+    }
     case 'message-failed':
       return {
         ...state,
@@ -369,6 +478,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         historyStatus: 'idle',
         historyError: null,
         processedMessageIds: new Set(),
+        pendingMessageStatuses: new Map(),
         pollingError: null,
       };
   }

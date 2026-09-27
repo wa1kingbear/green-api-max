@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AppError } from '../../../app/model';
-import { useApp } from '../../../app/useApp';
+import {
+  useActiveChat,
+  useAppDispatch,
+  useConversationState,
+  useSessionState,
+} from '../../../app/useApp';
 import { getChatHistoryPage } from '../../../shared/api/getChatHistory';
 import { isGreenApiError } from '../../../shared/api/greenApiError';
 
 const HISTORY_PAGE_SIZE = 100;
+const HISTORY_MAX_COUNT = 5_000;
 
 interface HistoryPaginationState {
   chatId: string | null;
@@ -36,7 +42,10 @@ function normalizeError(error: unknown): AppError {
 }
 
 export function useLoadChatHistory() {
-  const { state, dispatch } = useApp();
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
+  const activeChat = useActiveChat();
+  const { historyStatus } = useConversationState();
   const [reloadVersion, setReloadVersion] = useState(0);
   const [pagination, setPagination] = useState<HistoryPaginationState>({
     chatId: null,
@@ -46,14 +55,10 @@ export function useLoadChatHistory() {
   });
   const loadedCountRef = useRef(HISTORY_PAGE_SIZE);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
-  const reloadHistory = useCallback(
-    () => setReloadVersion((value) => value + 1),
-    [],
-  );
+  const reloadHistory = useCallback(() => setReloadVersion((value) => value + 1), []);
 
   useEffect(() => {
-    const credentials = state.credentials;
-    const chatId = state.activeChat?.chatId;
+    const chatId = activeChat?.chatId;
 
     if (!credentials || !chatId) {
       return undefined;
@@ -78,7 +83,7 @@ export function useLoadChatHistory() {
           });
           setPagination({
             chatId,
-            hasMore: page.hasMore,
+            hasMore: page.hasMore && HISTORY_PAGE_SIZE < HISTORY_MAX_COUNT,
             isLoadingMore: false,
             loadMoreFailed: false,
           });
@@ -97,11 +102,10 @@ export function useLoadChatHistory() {
       controller.abort();
       loadMoreControllerRef.current?.abort();
     };
-  }, [dispatch, reloadVersion, state.activeChat?.chatId, state.credentials]);
+  }, [activeChat?.chatId, credentials, dispatch, reloadVersion]);
 
   const loadMoreHistory = useCallback(() => {
-    const credentials = state.credentials;
-    const chatId = state.activeChat?.chatId;
+    const chatId = activeChat?.chatId;
 
     if (
       !credentials ||
@@ -114,7 +118,7 @@ export function useLoadChatHistory() {
     }
 
     const controller = new AbortController();
-    const nextCount = loadedCountRef.current + HISTORY_PAGE_SIZE;
+    const nextCount = Math.min(loadedCountRef.current * 2, HISTORY_MAX_COUNT);
     loadMoreControllerRef.current = controller;
     setPagination((current) => ({
       ...current,
@@ -140,7 +144,7 @@ export function useLoadChatHistory() {
         });
         setPagination({
           chatId,
-          hasMore: page.hasMore,
+          hasMore: page.hasMore && nextCount < HISTORY_MAX_COUNT,
           isLoadingMore: false,
           loadMoreFailed: false,
         });
@@ -160,14 +164,13 @@ export function useLoadChatHistory() {
             : current,
         );
       });
-  }, [dispatch, pagination, state.activeChat?.chatId, state.credentials]);
+  }, [activeChat?.chatId, credentials, dispatch, pagination]);
 
   const activePagination =
-    pagination.chatId === state.activeChat?.chatId &&
-    state.historyStatus === 'ready'
+    pagination.chatId === activeChat?.chatId && historyStatus === 'ready'
       ? pagination
       : {
-          chatId: state.activeChat?.chatId ?? null,
+          chatId: activeChat?.chatId ?? null,
           hasMore: false,
           isLoadingMore: false,
           loadMoreFailed: false,

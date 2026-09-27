@@ -15,6 +15,7 @@ import styles from './NewChatDialog.module.css';
 interface NewChatDialogProps {
   onClose: () => void;
   onCreate: (phoneNumber: string) => Promise<void>;
+  onCreated: () => void;
 }
 
 const validationMessages: Record<PhoneValidationError, string> = {
@@ -23,7 +24,7 @@ const validationMessages: Record<PhoneValidationError, string> = {
   'unsupported-country': 'Сейчас поддерживаются номера РФ и Беларуси.',
 };
 
-export function NewChatDialog({ onClose, onCreate }: NewChatDialogProps) {
+export function NewChatDialog({ onClose, onCreate, onCreated }: NewChatDialogProps) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,7 +86,7 @@ export function NewChatDialog({ onClose, onCreate }: NewChatDialogProps) {
 
     try {
       await onCreate(validation.normalized);
-      onClose();
+      onCreated();
     } catch (error) {
       setErrorMessage(
         isGreenApiError(error)

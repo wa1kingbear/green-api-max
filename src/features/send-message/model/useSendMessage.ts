@@ -1,20 +1,28 @@
 import type { Message } from '../../../app/model';
-import { useApp } from '../../../app/useApp';
+import {
+  useActiveChat,
+  useAppDispatch,
+  useConversationState,
+  useSessionState,
+} from '../../../app/useApp';
 import { sendMessage as sendMessageRequest } from '../../../shared/api/sendMessage';
 import { createTemporaryMessageId, prepareMessageText } from './message';
 
 export function useSendMessage() {
-  const { state, dispatch } = useApp();
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
+  const activeChat = useActiveChat();
+  const { messages } = useConversationState();
 
   const performRequest = async (message: Message) => {
-    if (!state.credentials) {
+    if (!credentials) {
       dispatch({ type: 'message-failed', payload: { id: message.id } });
       return;
     }
 
     try {
       const result = await sendMessageRequest({
-        credentials: state.credentials,
+        credentials,
         chatId: message.chatId,
         message: message.text,
       });
@@ -34,13 +42,13 @@ export function useSendMessage() {
   const sendMessage = (value: string) => {
     const text = prepareMessageText(value);
 
-    if (!text || !state.activeChat) {
+    if (!text || !activeChat) {
       return;
     }
 
     const message: Message = {
       id: createTemporaryMessageId(),
-      chatId: state.activeChat.chatId,
+      chatId: activeChat.chatId,
       direction: 'outgoing',
       text,
       timestamp: Date.now(),
@@ -52,9 +60,7 @@ export function useSendMessage() {
   };
 
   const retryMessage = (id: string) => {
-    const message = state.messages.find(
-      (item) => item.id === id && item.status === 'failed',
-    );
+    const message = messages.find((item) => item.id === id && item.status === 'failed');
 
     if (!message) {
       return;

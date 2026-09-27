@@ -6,7 +6,7 @@ import {
 } from '@phosphor-icons/react';
 import { type SyntheticEvent, useState } from 'react';
 
-import { useApp } from '../../app/useApp';
+import { useAppDispatch } from '../../app/useApp';
 import { getSettings } from '../../shared/api/getSettings';
 import { isGreenApiError } from '../../shared/api/greenApiError';
 import styles from './ConnectionPage.module.css';
@@ -33,7 +33,7 @@ function validate(idInstance: string, apiTokenInstance: string): FormErrors {
 }
 
 export function ConnectionPage() {
-  const { dispatch } = useApp();
+  const dispatch = useAppDispatch();
   const [idInstance, setIdInstance] = useState('');
   const [apiTokenInstance, setApiTokenInstance] = useState('');
   const [isTokenVisible, setIsTokenVisible] = useState(false);
@@ -183,8 +183,8 @@ export function ConnectionPage() {
         <div className={styles.privacyNote}>
           <LockKeyIcon size={19} weight="fill" aria-hidden="true" />
           <p>
-            Данные сохраняются в этом браузере и удаляются после выхода из
-            приложения. Не подключайтесь на чужом устройстве.
+            Данные сохраняются в этом браузере и удаляются после выхода из приложения.
+            Не подключайтесь на чужом устройстве.
           </p>
         </div>
 

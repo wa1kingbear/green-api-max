@@ -1,9 +1,9 @@
 import { ConnectionPage } from '../pages/connection/ConnectionPage';
 import { MessengerPage } from '../pages/messenger/MessengerPage';
-import { useApp } from './useApp';
+import { useSessionState } from './useApp';
 
 export function App() {
-  const { state } = useApp();
+  const { connection } = useSessionState();
 
-  return state.connection === 'disconnected' ? <ConnectionPage /> : <MessengerPage />;
+  return connection === 'disconnected' ? <ConnectionPage /> : <MessengerPage />;
 }

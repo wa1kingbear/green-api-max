@@ -1,14 +1,16 @@
-import { useApp } from '../../../app/useApp';
+import { useAppDispatch, useChatListState, useSessionState } from '../../../app/useApp';
 import { checkAccount } from '../../../shared/api/checkAccount';
 import { getAvatar } from '../../../shared/api/getAvatar';
 import { GreenApiError } from '../../../shared/api/greenApiError';
 import { formatPhoneNumber } from './phone';
 
 export function useCreateChat() {
-  const { state, dispatch } = useApp();
+  const dispatch = useAppDispatch();
+  const { credentials } = useSessionState();
+  const { chats } = useChatListState();
 
   return async (phoneNumber: string) => {
-    if (!state.credentials) {
+    if (!credentials) {
       throw new GreenApiError({
         code: 'invalid-credentials',
         message: 'Подключитесь к GREEN-API ещё раз.',
@@ -17,7 +19,7 @@ export function useCreateChat() {
     }
 
     const result = await checkAccount({
-      credentials: state.credentials,
+      credentials,
       phoneNumber,
     });
 
@@ -37,7 +39,7 @@ export function useCreateChat() {
       });
     }
 
-    const existingChat = state.chats.find((chat) => chat.chatId === result.chatId);
+    const existingChat = chats.find((chat) => chat.chatId === result.chatId);
     const chat = existingChat ?? {
       chatId: result.chatId,
       phoneNumber,
@@ -54,11 +56,11 @@ export function useCreateChat() {
       existingChat?.avatarStatus === 'ready' ||
       existingChat?.avatarStatus === 'loading'
     ) {
-      return;
+      return chat;
     }
 
     void getAvatar({
-      credentials: state.credentials,
+      credentials,
       chatId: result.chatId,
     })
       .then((avatarUrl) => {
@@ -73,5 +75,7 @@ export function useCreateChat() {
           payload: { chatId: result.chatId },
         });
       });
+
+    return chat;
   };
 }
