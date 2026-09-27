@@ -90,6 +90,10 @@
   background: #eceef0;
 }
 
+.field input::placeholder {
+  color: #626a72;
+}
+
 .field input:focus {
   background: #fff;
   border-color: var(--accent);

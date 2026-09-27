@@ -5,7 +5,7 @@ import {
   WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { type SyntheticEvent, useEffect, useState } from 'react';
+import { type SyntheticEvent, useEffect, useRef, useState } from 'react';
 
 import { isGreenApiError } from '../../../shared/api/greenApiError';
 import { IconButton } from '../../../shared/ui/IconButton/IconButton';
@@ -27,17 +27,49 @@ export function NewChatDialog({ onClose, onCreate }: NewChatDialogProps) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const dialogRef = useRef<HTMLElement>(null);
+  const isSubmittingRef = useRef(isSubmitting);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+    onCloseRef.current = onClose;
+  }, [isSubmitting, onClose]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isSubmitting) {
-        onClose();
+      if (event.key === 'Escape' && !isSubmittingRef.current) {
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), input:not(:disabled)',
+      );
+
+      if (!focusableElements?.length) {
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isSubmitting, onClose]);
+  }, []);
 
   const handleSubmit = async (event: SyntheticEvent<HTMLFormElement, SubmitEvent>) => {
     event.preventDefault();
@@ -80,6 +112,7 @@ export function NewChatDialog({ onClose, onCreate }: NewChatDialogProps) {
         aria-labelledby="new-chat-title"
         aria-modal="true"
         className={styles.dialog}
+        ref={dialogRef}
         role="dialog"
       >
         <div className={styles.headingRow}>

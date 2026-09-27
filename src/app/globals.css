@@ -5,10 +5,10 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --accent: #087bff;
-  --accent-hover: #006ce2;
+  --accent: #0069d9;
+  --accent-hover: #005bbb;
   --text: #121416;
-  --muted: #7d838a;
+  --muted: #626a72;
   --line: #e7e9ec;
   --surface: #ffffff;
   --surface-soft: #f1f2f4;
@@ -45,7 +45,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 3px solid rgb(8 123 255 / 28%);
+  outline: 3px solid #0069d9;
   outline-offset: 2px;
 }
 

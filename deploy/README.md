@@ -10,6 +10,7 @@
 
 - `__SERVER_NAME__` — публичный IP VPS;
 - `__DEPLOY_PATH__` — абсолютный каталог приложения.
+- `__ACME_ROOT__` — отдельный webroot для ACME challenge.
 
 Этот вариант обслуживает стенд только по HTTP и не включает HSTS. Он подходит
 для демонстрации тестового задания, но не заменяет HTTPS для production-сервиса.
@@ -23,7 +24,7 @@ curl --fail --silent --show-error http://<server-ip>/healthz
 
 Перед установкой `nginx/green-api-max.conf.template` нужно заменить:
 
-- `__DOMAIN__` — production-домен;
+- `__SERVER_NAME__` — production-домен или публичный IP;
 - `__DEPLOY_PATH__` — абсолютный каталог приложения, например
   `/var/www/green-api-chat`;
 - `__ACME_ROOT__` — webroot для ACME challenge;
@@ -33,11 +34,42 @@ curl --fail --silent --show-error http://<server-ip>/healthz
 директиве CSP `connect-src`. HSTS включается только после получения сертификата и
 успешной проверки HTTPS.
 
+### HTTPS для публичного IP
+
+Let’s Encrypt выпускает публично доверенные сертификаты непосредственно для
+IPv4 и IPv6. Такие сертификаты используют профиль `shortlived` и действуют 160
+часов, поэтому автоматическое продление обязательно. Нужен Certbot 5.4 или
+новее, а порты 80 и 443 должны быть доступны извне.
+
+Для уже работающего Nginx сертификат можно получить через отдельный ACME
+webroot:
+
+```bash
+sudo certbot certonly \
+  --non-interactive \
+  --agree-tos \
+  --register-unsafely-without-email \
+  --preferred-profile shortlived \
+  --webroot \
+  --webroot-path /var/www/letsencrypt \
+  --ip-address <server-ip> \
+  --cert-name <server-ip>
+```
+
+После установки `nginx/green-api-max.conf.template` hook
+`scripts/reload-nginx-after-certbot.sh` нужно скопировать в
+`/etc/letsencrypt/renewal-hooks/deploy/reload-nginx` с правами `0755`.
+Автоматическое продление проверяется командой:
+
+```bash
+sudo certbot renew --cert-name <server-ip> --dry-run --run-deploy-hooks
+```
+
 Перед reload HTTPS-конфигурации обязательны:
 
 ```bash
 sudo nginx -t
-curl --fail --silent --show-error https://<domain>/healthz
+curl --fail --silent --show-error https://<server-name>/healthz
 ```
 
 ## Releases
@@ -88,8 +120,8 @@ DEPLOY_PATH
 PRODUCTION_URL
 ```
 
-Для тестового стенда без домена `PRODUCTION_URL` имеет вид
-`http://<server-ip>`. Используется отдельный deploy-ключ без пароля; личный
+Для стенда с IP-сертификатом `PRODUCTION_URL` имеет вид
+`https://<server-ip>`. Используется отдельный deploy-ключ без пароля; личный
 SSH-ключ разработчика в GitHub Secrets не добавляется.
 
 Workflow повторно собирает выбранный commit, загружает архив в `incoming`,

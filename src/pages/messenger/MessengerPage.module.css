@@ -28,7 +28,7 @@
   gap: 3px;
   align-items: center;
   justify-content: center;
-  color: #94999e;
+  color: #69737c;
   background: transparent;
   border: 0;
   border-radius: 13px;
@@ -38,9 +38,14 @@
     background-color 160ms ease;
 }
 
-.railItem:hover {
+.railItem:not(:disabled):hover {
   color: #4c5156;
   background: #f4f5f6;
+}
+
+.railItem:disabled,
+.mobileFooter button:disabled {
+  cursor: default;
 }
 
 .railItemActive {
@@ -72,7 +77,7 @@
 }
 
 .connectionStatus {
-  color: #18b85a;
+  color: #087b3a;
   font-size: 12px;
   font-weight: 650;
 }
@@ -88,7 +93,7 @@
 }
 
 .connectionStatusDegraded {
-  color: #c9770a;
+  color: #a85a00;
 }
 
 .connectionStatusDegraded::before {
@@ -215,6 +220,10 @@
   color: var(--muted);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.emptyConversation p {
+  color: #4d5963;
 }
 
 .secondaryButton,
@@ -444,7 +453,7 @@
     gap: 2px;
     align-items: center;
     justify-content: center;
-    color: #969ba1;
+    color: #69737c;
     background: transparent;
     border: 0;
     font-size: 12px;

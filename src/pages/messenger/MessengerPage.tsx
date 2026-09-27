@@ -9,7 +9,7 @@ import {
   UsersThreeIcon,
   WarningCircleIcon,
 } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
@@ -28,13 +28,24 @@ export function MessengerPage() {
   useReceiveMessages();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
+  const newChatTriggerRef = useRef<HTMLElement | null>(null);
   const latestMessage = state.messages.at(-1);
   const isConnectionDegraded = state.connection === 'degraded';
 
-  const openNewChatDialog = () => setIsNewChatOpen(true);
+  const openNewChatDialog = () => {
+    newChatTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setIsNewChatOpen(true);
+  };
+
+  const closeNewChatDialog = () => {
+    setIsNewChatOpen(false);
+    requestAnimationFrame(() => newChatTriggerRef.current?.focus());
+  };
 
   const handleCreateChat = async (phoneNumber: string) => {
     await createChat(phoneNumber);
+    newChatTriggerRef.current = null;
     setIsMobileChatOpen(true);
   };
 
@@ -52,7 +63,13 @@ export function MessengerPage() {
               <ChatCircleDotsIcon size={27} weight="fill" />
               <span>Чаты</span>
             </button>
-            <button className={styles.railItem} type="button">
+            <button
+              aria-label="Контакты — недоступно в MVP"
+              className={styles.railItem}
+              disabled
+              title="Контакты не входят в MVP"
+              type="button"
+            >
               <UsersThreeIcon size={27} weight="fill" />
               <span>Контакты</span>
             </button>
@@ -127,7 +144,12 @@ export function MessengerPage() {
           )}
 
           <footer className={styles.mobileFooter}>
-            <button type="button">
+            <button
+              aria-label="Контакты — недоступно в MVP"
+              disabled
+              title="Контакты не входят в MVP"
+              type="button"
+            >
               <UsersThreeIcon size={27} weight="fill" />
               Контакты
             </button>
@@ -195,7 +217,7 @@ export function MessengerPage() {
 
       {isNewChatOpen && (
         <NewChatDialog
-          onClose={() => setIsNewChatOpen(false)}
+          onClose={closeNewChatDialog}
           onCreate={handleCreateChat}
         />
       )}
