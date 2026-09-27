@@ -91,9 +91,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       };
     case 'chats-loaded': {
       const loadedChatIds = new Set(action.payload.map((chat) => chat.chatId));
+      const existingChatsById = new Map(state.chats.map((chat) => [chat.chatId, chat]));
       const localChats = state.chats.filter((chat) => !loadedChatIds.has(chat.chatId));
       const chats = action.payload.map((chat) => {
-        const existingChat = state.chats.find((item) => item.chatId === chat.chatId);
+        const existingChat = existingChatsById.get(chat.chatId);
         return existingChat
           ? {
               ...existingChat,

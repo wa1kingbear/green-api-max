@@ -8,8 +8,17 @@ import {
   WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
+import type { Chat } from '../../app/model';
 import { useApp } from '../../app/useApp';
 import { useCreateChat } from '../../features/create-chat/model/useCreateChat';
 import { NewChatDialog } from '../../features/create-chat/ui/NewChatDialog';
@@ -110,33 +119,136 @@ function chatMatchesSearch(
   );
 }
 
+interface ChatListItemProps {
+  chat: Chat;
+  isActive: boolean;
+  onOpen: (chat: Chat) => void;
+}
+
+const ChatListItem = memo(function ChatListItem({
+  chat,
+  isActive,
+  onOpen,
+}: ChatListItemProps) {
+  return (
+    <button
+      aria-current={isActive ? 'page' : undefined}
+      className={`${styles.chatItem} ${isActive ? styles.chatItemActive : ''} ${
+        chat.unreadCount ? styles.chatItemUnread : ''
+      }`}
+      data-chat-id={chat.chatId}
+      onClick={() => onOpen(chat)}
+      type="button"
+    >
+      <ChatAvatar
+        avatarStatus={chat.avatarStatus}
+        avatarUrl={chat.avatarUrl}
+        className={styles.chatAvatar}
+        iconSize={42}
+        lazy
+      />
+      <span className={styles.chatSummary}>
+        <strong>{chat.displayName}</strong>
+        {chat.previewStatus !== 'ready' &&
+        chat.previewStatus !== 'error' &&
+        !chat.lastMessage ? (
+          <span
+            aria-label="Загружается последнее сообщение"
+            className={styles.chatPreviewSkeleton}
+          />
+        ) : (
+          <span>{getChatPreview(chat)}</span>
+        )}
+      </span>
+      {Boolean(chat.unreadCount) && (
+        <span
+          aria-label={`Непрочитанных сообщений: ${chat.unreadCount}`}
+          className={styles.unreadBadge}
+        >
+          {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
+        </span>
+      )}
+    </button>
+  );
+});
+
 export function MessengerPage() {
   const { state, dispatch } = useApp();
   const createChat = useCreateChat();
   const { sendMessage, retryMessage } = useSendMessage();
   useReceiveMessages();
-  const { reloadChats } = useLoadChats();
+  const { loadAllChatPreviews, loadChatDetails, reloadChats } = useLoadChats();
   const { hasMore, isLoadingMore, loadMoreFailed, loadMoreHistory, reloadHistory } =
     useLoadChatHistory();
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-  const [isMobileChatOpen, setIsMobileChatOpen] = useState(state.activeChat !== null);
   const [searchQuery, setSearchQuery] = useState('');
   const newChatTriggerRef = useRef<HTMLElement | null>(null);
+  const chatListRef = useRef<HTMLElement | null>(null);
+  const isMobileChatOpen = state.activeChat !== null;
   const isConnectionDegraded = state.connection === 'degraded';
   const filteredChats = useMemo(
     () => state.chats.filter((chat) => chatMatchesSearch(chat, searchQuery)),
     [searchQuery, state.chats],
   );
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const filteredChatIds = useMemo(
+    () => filteredChats.map((chat) => chat.chatId).join('\u0000'),
+    [filteredChats],
+  );
 
-  const syncChatFromUrl = useCallback(() => {
+  useEffect(() => {
+    if (hasSearchQuery) {
+      loadAllChatPreviews();
+    }
+  }, [hasSearchQuery, loadAllChatPreviews, state.chatsStatus]);
+
+  useEffect(() => {
+    const list = chatListRef.current;
+
+    if (!list) {
+      return undefined;
+    }
+
+    const chatItems = Array.from(list.querySelectorAll<HTMLElement>('[data-chat-id]'));
+
+    if (!('IntersectionObserver' in window)) {
+      chatItems.forEach((item) => {
+        const chatId = item.dataset.chatId;
+        if (chatId) {
+          loadChatDetails(chatId);
+        }
+      });
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
+
+          const chatId = (entry.target as HTMLElement).dataset.chatId;
+          if (chatId) {
+            loadChatDetails(chatId);
+          }
+          observer.unobserve(entry.target);
+        });
+      },
+      { root: list, rootMargin: '240px 0px' },
+    );
+
+    chatItems.forEach((item) => observer.observe(item));
+    return () => observer.disconnect();
+  }, [filteredChatIds, loadChatDetails, state.chatsStatus]);
+
+  const syncChatFromUrl = useEffectEvent(() => {
     const chatId = getChatIdFromUrl();
 
     if (!chatId) {
       if (state.activeChat) {
         dispatch({ type: 'close-chat' });
       }
-      setIsMobileChatOpen(false);
       return;
     }
 
@@ -151,25 +263,25 @@ export function MessengerPage() {
       if (state.activeChat) {
         dispatch({ type: 'close-chat' });
       }
-      setIsMobileChatOpen(false);
       return;
     }
 
     if (state.activeChat?.chatId !== chat.chatId) {
       dispatch({ type: 'open-chat', payload: chat });
     }
-    setIsMobileChatOpen(true);
-  }, [dispatch, state.activeChat, state.chats, state.chatsStatus]);
+    loadChatDetails(chat.chatId);
+  });
 
   useEffect(() => {
     const timeoutId = window.setTimeout(syncChatFromUrl, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [syncChatFromUrl]);
+  }, [state.chatsStatus]);
 
   useEffect(() => {
-    window.addEventListener('popstate', syncChatFromUrl);
-    return () => window.removeEventListener('popstate', syncChatFromUrl);
-  }, [syncChatFromUrl]);
+    const handlePopState = () => syncChatFromUrl();
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const openNewChatDialog = () => {
     newChatTriggerRef.current =
@@ -186,19 +298,20 @@ export function MessengerPage() {
     const chat = await createChat(phoneNumber);
     setChatIdInUrl(chat.chatId);
     newChatTriggerRef.current = null;
-    setIsMobileChatOpen(true);
   };
 
-  const openChat = (chat: (typeof state.chats)[number]) => {
-    setChatIdInUrl(chat.chatId);
-    dispatch({ type: 'open-chat', payload: chat });
-    setIsMobileChatOpen(true);
-  };
+  const openChat = useCallback(
+    (chat: Chat) => {
+      setChatIdInUrl(chat.chatId);
+      loadChatDetails(chat.chatId);
+      dispatch({ type: 'open-chat', payload: chat });
+    },
+    [dispatch, loadChatDetails],
+  );
 
   const closeChat = () => {
     setChatIdInUrl(null);
     dispatch({ type: 'close-chat' });
-    setIsMobileChatOpen(false);
   };
 
   const disconnect = () => {
@@ -284,48 +397,15 @@ export function MessengerPage() {
                 className={styles.chatList}
                 id="chat-list"
                 aria-label="Список чатов"
+                ref={chatListRef}
               >
                 {filteredChats.map((chat) => (
-                  <button
-                    aria-current={
-                      state.activeChat?.chatId === chat.chatId ? 'page' : undefined
-                    }
-                    className={`${styles.chatItem} ${
-                      state.activeChat?.chatId === chat.chatId
-                        ? styles.chatItemActive
-                        : ''
-                    } ${chat.unreadCount ? styles.chatItemUnread : ''}`}
+                  <ChatListItem
+                    chat={chat}
+                    isActive={state.activeChat?.chatId === chat.chatId}
                     key={chat.chatId}
-                    onClick={() => openChat(chat)}
-                    type="button"
-                  >
-                    <ChatAvatar
-                      avatarStatus={chat.avatarStatus}
-                      avatarUrl={chat.avatarUrl}
-                      className={styles.chatAvatar}
-                      iconSize={42}
-                      lazy
-                    />
-                    <span className={styles.chatSummary}>
-                      <strong>{chat.displayName}</strong>
-                      {chat.previewStatus === 'loading' && !chat.lastMessage ? (
-                        <span
-                          aria-label="Загружается последнее сообщение"
-                          className={styles.chatPreviewSkeleton}
-                        />
-                      ) : (
-                        <span>{getChatPreview(chat)}</span>
-                      )}
-                    </span>
-                    {Boolean(chat.unreadCount) && (
-                      <span
-                        aria-label={`Непрочитанных сообщений: ${chat.unreadCount}`}
-                        className={styles.unreadBadge}
-                      >
-                        {chat.unreadCount! > 99 ? '99+' : chat.unreadCount}
-                      </span>
-                    )}
-                  </button>
+                    onOpen={openChat}
+                  />
                 ))}
               </section>
             ) : (

@@ -31,7 +31,10 @@ const server = setupServer(
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.unstubAllGlobals();
+});
 afterAll(() => server.close());
 
 function renderApp() {
@@ -225,6 +228,80 @@ describe('messenger integration', () => {
     expect(articles).toHaveLength(2);
     expect(articles[0]).toHaveTextContent('Старое сообщение');
     expect(articles[1]).toHaveTextContent('Новое сообщение');
+  });
+
+  it('loads previews only when a chat approaches the visible area', async () => {
+    let observerCallback: IntersectionObserverCallback | undefined;
+    const observedItems: Element[] = [];
+    const historyRequests: string[] = [];
+
+    class TestIntersectionObserver implements IntersectionObserver {
+      readonly root = null;
+      readonly rootMargin = '240px 0px';
+      readonly scrollMargin = '0px';
+      readonly thresholds = [0];
+
+      constructor(callback: IntersectionObserverCallback) {
+        observerCallback = callback;
+      }
+
+      disconnect() {}
+
+      observe(target: Element) {
+        observedItems.push(target);
+      }
+
+      takeRecords() {
+        return [];
+      }
+
+      unobserve() {}
+    }
+
+    vi.stubGlobal('IntersectionObserver', TestIntersectionObserver);
+    server.use(
+      http.get(getChatsEndpoint, () =>
+        HttpResponse.json([
+          {
+            chatId: '10000000',
+            name: 'Анна',
+            type: 'user',
+            phoneNumber: 79991234567,
+          },
+          {
+            chatId: '10000001',
+            name: 'Сергей',
+            type: 'user',
+            phoneNumber: 79876543210,
+          },
+        ]),
+      ),
+      http.post(getChatHistoryEndpoint, async ({ request }) => {
+        const body = (await request.json()) as { chatId: string };
+        historyRequests.push(body.chatId);
+        return HttpResponse.json([]);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await connect(user);
+    await waitFor(() => expect(observedItems).toHaveLength(2));
+    expect(historyRequests).toEqual([]);
+
+    observerCallback?.(
+      [
+        {
+          isIntersecting: true,
+          target: observedItems[0]!,
+        } as IntersectionObserverEntry,
+      ],
+      {} as IntersectionObserver,
+    );
+
+    await waitFor(() => expect(historyRequests).toEqual(['10000000']), {
+      timeout: 2_500,
+    });
   });
 
   it('shows a skeleton while the chat preview is loading', async () => {
