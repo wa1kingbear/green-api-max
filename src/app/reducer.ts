@@ -53,6 +53,28 @@ function mergeMessages(history: AppState['messages'], current: AppState['message
   );
 }
 
+const MESSAGE_STATUS_RANK = {
+  sending: 0,
+  sent: 1,
+  delivered: 2,
+  read: 3,
+} as const;
+
+function applyMessageStatus(
+  current: AppState['messages'][number]['status'],
+  next: Exclude<AppState['messages'][number]['status'], 'sending'>,
+) {
+  if (next === 'failed') {
+    return current === 'delivered' || current === 'read' ? current : next;
+  }
+
+  if (current === 'failed') {
+    return next;
+  }
+
+  return MESSAGE_STATUS_RANK[next] > MESSAGE_STATUS_RANK[current] ? next : current;
+}
+
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'connect':
@@ -275,6 +297,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 ...message,
                 id: action.payload.idMessage,
                 status: 'sent' as const,
+              }
+            : message,
+        ),
+      };
+    case 'message-status-updated':
+      return {
+        ...state,
+        messages: state.messages.map((message) =>
+          message.id === action.payload.idMessage &&
+          message.chatId === action.payload.chatId &&
+          message.direction === 'outgoing'
+            ? {
+                ...message,
+                status: applyMessageStatus(message.status, action.payload.status),
               }
             : message,
         ),

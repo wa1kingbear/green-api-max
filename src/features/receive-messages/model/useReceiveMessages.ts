@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { useApp } from '../../../app/useApp';
 import { deleteNotification } from '../../../shared/api/deleteNotification';
 import { receiveNotification } from '../../../shared/api/receiveNotification';
-import { parseIncomingMessage } from './notification';
+import { parseIncomingMessage, parseOutgoingMessageStatus } from './notification';
 import { runPolling, startPollingSession } from './polling';
 
 const RECEIVE_TIMEOUT_SECONDS = 10;
@@ -35,6 +35,13 @@ export function useReceiveMessages() {
         remove: (receiptId, requestSignal) =>
           deleteNotification({ credentials, receiptId, signal: requestSignal }),
         onNotification: (body) => {
+          const statusUpdate = parseOutgoingMessageStatus(body);
+
+          if (statusUpdate) {
+            dispatch({ type: 'message-status-updated', payload: statusUpdate });
+            return;
+          }
+
           const message = parseIncomingMessage(body);
 
           if (!message || processedMessageIdsRef.current.has(message.id)) {

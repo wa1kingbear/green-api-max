@@ -61,7 +61,7 @@ describe('getChatHistory', () => {
         direction: 'outgoing',
         text: 'Первое',
         timestamp: 10_000,
-        status: 'sent',
+        status: 'delivered',
       },
       {
         id: 'image-1',
@@ -80,6 +80,30 @@ describe('getChatHistory', () => {
         timestamp: 20_000,
         status: 'sent',
       },
+    ]);
+  });
+
+  it('preserves a read status for an outgoing message', async () => {
+    server.use(
+      http.post(endpoint, () =>
+        HttpResponse.json([
+          {
+            type: 'outgoing',
+            idMessage: 'message-read',
+            timestamp: 10,
+            chatId: '10000000',
+            typeMessage: 'textMessage',
+            textMessage: 'Прочитанное сообщение',
+            statusMessage: 'read',
+          },
+        ]),
+      ),
+    );
+
+    await expect(
+      getChatHistory({ apiUrl, credentials, chatId: '10000000' }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: 'message-read', status: 'read' }),
     ]);
   });
 

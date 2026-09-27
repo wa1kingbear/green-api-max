@@ -15,6 +15,31 @@ function createMessage(id: string, timestamp: number): Message {
 }
 
 describe('MessageList', () => {
+  it('shows one check for sent and two checks for delivered and read messages', () => {
+    render(
+      <MessageList
+        canLoadMore={false}
+        isLoadingMore={false}
+        loadMoreFailed={false}
+        messages={[
+          { ...createMessage('sent', 1), direction: 'outgoing', status: 'sent' },
+          {
+            ...createMessage('delivered', 2),
+            direction: 'outgoing',
+            status: 'delivered',
+          },
+          { ...createMessage('read', 3), direction: 'outgoing', status: 'read' },
+        ]}
+        onLoadMore={() => undefined}
+        onRetry={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTitle('Отправлено').querySelectorAll('svg')).toHaveLength(1);
+    expect(screen.getByTitle('Доставлено').querySelectorAll('svg')).toHaveLength(2);
+    expect(screen.getByTitle('Прочитано').querySelectorAll('svg')).toHaveLength(2);
+  });
+
   it('shows media as a link that opens in a new tab', () => {
     render(
       <MessageList

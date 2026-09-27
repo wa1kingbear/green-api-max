@@ -1,4 +1,4 @@
-import { parseIncomingMessage } from './notification';
+import { parseIncomingMessage, parseOutgoingMessageStatus } from './notification';
 
 const notification = {
   typeWebhook: 'incomingMessageReceived',
@@ -63,5 +63,59 @@ describe('parseIncomingMessage', () => {
     { ...notification, idMessage: null },
   ])('ignores unsupported or malformed notifications', (value) => {
     expect(parseIncomingMessage(value)).toBeNull();
+  });
+});
+
+describe('parseOutgoingMessageStatus', () => {
+  it.each(['sent', 'delivered', 'read'] as const)(
+    'converts the %s status notification',
+    (status) => {
+      expect(
+        parseOutgoingMessageStatus({
+          typeWebhook: 'outgoingMessageStatus',
+          chatId: '10000000',
+          idMessage: 'message-1',
+          status,
+        }),
+      ).toEqual({
+        chatId: '10000000',
+        idMessage: 'message-1',
+        status,
+      });
+    },
+  );
+
+  it('maps terminal delivery errors to failed', () => {
+    expect(
+      parseOutgoingMessageStatus({
+        typeWebhook: 'outgoingMessageStatus',
+        chatId: '10000000',
+        idMessage: 'message-1',
+        status: 'noAccount',
+      }),
+    ).toEqual({
+      chatId: '10000000',
+      idMessage: 'message-1',
+      status: 'failed',
+    });
+  });
+
+  it('ignores unrelated or malformed status notifications', () => {
+    expect(
+      parseOutgoingMessageStatus({
+        typeWebhook: 'incomingMessageReceived',
+        chatId: '10000000',
+        idMessage: 'message-1',
+        status: 'read',
+      }),
+    ).toBeNull();
+    expect(
+      parseOutgoingMessageStatus({
+        typeWebhook: 'outgoingMessageStatus',
+        chatId: '10000000',
+        idMessage: 'message-1',
+        status: 'unknown',
+      }),
+    ).toBeNull();
   });
 });

@@ -199,6 +199,25 @@ export function MessageList({
                         <span className={styles.visuallyHidden}>Отправлено</span>
                       </span>
                     )}
+                    {message.direction === 'outgoing' &&
+                      (message.status === 'delivered' || message.status === 'read') && (
+                        <span
+                          className={`${styles.status} ${
+                            message.status === 'read'
+                              ? styles.statusRead
+                              : styles.statusDelivered
+                          }`}
+                          title={message.status === 'read' ? 'Прочитано' : 'Доставлено'}
+                        >
+                          <span className={styles.doubleCheck} aria-hidden="true">
+                            <CheckIcon size={16} weight="bold" />
+                            <CheckIcon size={16} weight="bold" />
+                          </span>
+                          <span className={styles.visuallyHidden}>
+                            {message.status === 'read' ? 'Прочитано' : 'Доставлено'}
+                          </span>
+                        </span>
+                      )}
                   </footer>
                   {message.direction === 'outgoing' && message.status === 'failed' && (
                     <button

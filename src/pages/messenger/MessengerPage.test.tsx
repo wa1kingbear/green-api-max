@@ -677,6 +677,49 @@ describe('sending a message', () => {
     expect(screen.getByLabelText('Сообщение')).toHaveValue('');
   });
 
+  it('updates an outgoing message when a read status notification arrives', async () => {
+    let releaseStatus: (() => void) | undefined;
+    let statusDelivered = false;
+    const messageSent = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+
+    server.use(
+      http.post(sendMessageEndpoint, () => {
+        releaseStatus?.();
+        return HttpResponse.json({ idMessage: 'outgoing-read' });
+      }),
+      http.get(receiveNotificationEndpoint, async () => {
+        if (statusDelivered) {
+          await delay('infinite');
+        }
+
+        await messageSent;
+        await delay(100);
+        statusDelivered = true;
+        return HttpResponse.json({
+          receiptId: 202,
+          body: {
+            typeWebhook: 'outgoingMessageStatus',
+            chatId: '10000000',
+            timestamp: 1763115112,
+            idMessage: 'outgoing-read',
+            status: 'read',
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+    await connect(user);
+    await createChat(user);
+
+    await user.type(screen.getByLabelText('Сообщение'), 'Привет{Enter}');
+
+    expect(await screen.findByTitle('Прочитано')).toBeInTheDocument();
+    expect(screen.queryByTitle('Отправлено')).not.toBeInTheDocument();
+  });
+
   it('retries a failed message without adding a duplicate', async () => {
     let attempt = 0;
     server.use(

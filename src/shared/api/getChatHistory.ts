@@ -99,6 +99,14 @@ function parseMediaUrl(value: unknown): string | null {
   }
 }
 
+function parseMessageStatus(value: unknown): Message['status'] {
+  if (value === 'read' || value === 'delivered' || value === 'sent') {
+    return value;
+  }
+
+  return value === 'failed' ? 'failed' : 'sent';
+}
+
 function parseHistoryMessage(value: unknown): Message | null {
   if (
     !isRecord(value) ||
@@ -137,7 +145,8 @@ function parseHistoryMessage(value: unknown): Message | null {
         : '',
     ...(mediaUrl ? { mediaUrl } : {}),
     timestamp: value.timestamp * 1000,
-    status: value.statusMessage === 'failed' ? 'failed' : 'sent',
+    status:
+      value.type === 'outgoing' ? parseMessageStatus(value.statusMessage) : 'sent',
   };
 }
 

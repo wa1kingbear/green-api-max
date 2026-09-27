@@ -1,5 +1,11 @@
 import type { Message } from '../../../app/model';
 
+export interface MessageStatusUpdate {
+  idMessage: string;
+  chatId: string;
+  status: 'sent' | 'delivered' | 'read' | 'failed';
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -75,4 +81,34 @@ export function parseIncomingMessage(value: unknown): Message | null {
     timestamp: value.timestamp * 1000,
     status: 'sent',
   };
+}
+
+export function parseOutgoingMessageStatus(value: unknown): MessageStatusUpdate | null {
+  if (
+    !isRecord(value) ||
+    value.typeWebhook !== 'outgoingMessageStatus' ||
+    typeof value.idMessage !== 'string' ||
+    !value.idMessage ||
+    typeof value.chatId !== 'string' ||
+    !value.chatId
+  ) {
+    return null;
+  }
+
+  const status =
+    value.status === 'sent' || value.status === 'delivered' || value.status === 'read'
+      ? value.status
+      : value.status === 'failed' ||
+          value.status === 'noAccount' ||
+          value.status === 'notInGroup'
+        ? 'failed'
+        : null;
+
+  return status
+    ? {
+        idMessage: value.idMessage,
+        chatId: value.chatId,
+        status,
+      }
+    : null;
 }

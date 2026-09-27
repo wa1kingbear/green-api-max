@@ -207,6 +207,23 @@
   color: #1394d0;
 }
 
+.statusDelivered {
+  color: #72828d;
+}
+
+.statusRead {
+  color: #1394d0;
+}
+
+.doubleCheck {
+  display: inline-flex;
+  align-items: center;
+}
+
+.doubleCheck svg + svg {
+  margin-left: -12px;
+}
+
 .retryButton {
   display: flex;
   min-height: 30px;

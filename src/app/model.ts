@@ -20,7 +20,7 @@ export interface Chat {
 export type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export type MessageDirection = 'incoming' | 'outgoing';
-export type MessageStatus = 'sending' | 'sent' | 'failed';
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
   id: string;
@@ -83,6 +83,14 @@ export type AppAction =
   | {
       type: 'message-sent';
       payload: { temporaryId: string; idMessage: string };
+    }
+  | {
+      type: 'message-status-updated';
+      payload: {
+        idMessage: string;
+        chatId: string;
+        status: Exclude<MessageStatus, 'sending'>;
+      };
     }
   | { type: 'message-failed'; payload: { id: string } }
   | { type: 'message-retrying'; payload: { id: string } }

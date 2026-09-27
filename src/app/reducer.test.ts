@@ -279,6 +279,50 @@ describe('appReducer', () => {
     });
   });
 
+  it('advances outgoing message delivery statuses without downgrading them', () => {
+    const stateWithMessage = {
+      ...initialAppState,
+      messages: [
+        {
+          id: 'message-1',
+          chatId: 'chat-1',
+          direction: 'outgoing' as const,
+          text: 'Привет',
+          timestamp: 1,
+          status: 'sent' as const,
+        },
+      ],
+    };
+    const deliveredState = appReducer(stateWithMessage, {
+      type: 'message-status-updated',
+      payload: {
+        idMessage: 'message-1',
+        chatId: 'chat-1',
+        status: 'delivered',
+      },
+    });
+    const readState = appReducer(deliveredState, {
+      type: 'message-status-updated',
+      payload: {
+        idMessage: 'message-1',
+        chatId: 'chat-1',
+        status: 'read',
+      },
+    });
+    const staleState = appReducer(readState, {
+      type: 'message-status-updated',
+      payload: {
+        idMessage: 'message-1',
+        chatId: 'chat-1',
+        status: 'delivered',
+      },
+    });
+
+    expect(deliveredState.messages[0]?.status).toBe('delivered');
+    expect(readState.messages[0]?.status).toBe('read');
+    expect(staleState.messages[0]?.status).toBe('read');
+  });
+
   it('marks a message as failed and returns it to sending on retry', () => {
     const stateWithMessage = {
       ...initialAppState,
