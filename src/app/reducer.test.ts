@@ -105,6 +105,29 @@ describe('appReducer', () => {
     expect(state.chats[0]?.unreadCount).toBe(1);
   });
 
+  it('uses a media label in the chat preview when there is no caption', () => {
+    const stateWithChats = appReducer(initialAppState, {
+      type: 'chats-loaded',
+      payload: [
+        { chatId: 'chat-1', phoneNumber: '70000000001', displayName: 'Первый' },
+      ],
+    });
+    const state = appReducer(stateWithChats, {
+      type: 'receive-message',
+      payload: {
+        id: 'image-1',
+        chatId: 'chat-1',
+        direction: 'incoming',
+        text: '',
+        mediaUrl: 'https://media.example.com/image.webp',
+        timestamp: 30,
+        status: 'sent',
+      },
+    });
+
+    expect(state.chats[0]?.lastMessage).toBe('Медиафайл');
+  });
+
   it('counts unread messages and clears the count when the chat opens', () => {
     const stateWithChats = appReducer(initialAppState, {
       type: 'chats-loaded',

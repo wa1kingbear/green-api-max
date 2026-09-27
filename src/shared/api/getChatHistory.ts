@@ -78,6 +78,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+const MEDIA_MESSAGE_TYPES = new Set([
+  'imageMessage',
+  'videoMessage',
+  'documentMessage',
+  'audioMessage',
+  'stickerMessage',
+]);
+
+function parseMediaUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseHistoryMessage(value: unknown): Message | null {
   if (
     !isRecord(value) ||
@@ -87,10 +108,21 @@ function parseHistoryMessage(value: unknown): Message | null {
     typeof value.chatId !== 'string' ||
     !value.chatId ||
     typeof value.timestamp !== 'number' ||
-    !Number.isFinite(value.timestamp) ||
-    typeof value.textMessage !== 'string' ||
-    !value.textMessage
+    !Number.isFinite(value.timestamp)
   ) {
+    return null;
+  }
+
+  const isTextMessage =
+    (value.typeMessage === 'textMessage' ||
+      value.typeMessage === 'extendedTextMessage') &&
+    typeof value.textMessage === 'string' &&
+    Boolean(value.textMessage);
+  const mediaUrl = MEDIA_MESSAGE_TYPES.has(String(value.typeMessage))
+    ? parseMediaUrl(value.downloadUrl)
+    : null;
+
+  if (!isTextMessage && !mediaUrl) {
     return null;
   }
 
@@ -98,7 +130,12 @@ function parseHistoryMessage(value: unknown): Message | null {
     id: value.idMessage,
     chatId: value.chatId,
     direction: value.type,
-    text: value.textMessage,
+    text: isTextMessage
+      ? String(value.textMessage)
+      : typeof value.caption === 'string'
+        ? value.caption
+        : '',
+    ...(mediaUrl ? { mediaUrl } : {}),
     timestamp: value.timestamp * 1000,
     status: value.statusMessage === 'failed' ? 'failed' : 'sent',
   };
@@ -189,9 +226,7 @@ export async function getChatHistoryPage({
   };
 }
 
-export async function getChatHistory(
-  params: GetChatHistoryParams,
-): Promise<Message[]> {
+export async function getChatHistory(params: GetChatHistoryParams): Promise<Message[]> {
   const page = await getChatHistoryPage(params);
   return page.messages;
 }

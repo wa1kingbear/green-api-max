@@ -252,7 +252,9 @@ describe('messenger integration', () => {
     await user.click(screen.getByRole('button', { name: 'Очистить поиск' }));
     await user.type(search, '8 (987) 654-32-10');
 
-    expect(screen.queryByRole('button', { name: /Анна Иванова/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Анна Иванова/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Сергей/ })).toBeInTheDocument();
 
     await user.clear(search);
@@ -528,9 +530,9 @@ describe('messenger integration', () => {
     await connect(user);
     const chat = await screen.findByRole('button', { name: /Сергей/ });
 
-    expect(
-      within(chat).getByLabelText('Непрочитанных сообщений: 3'),
-    ).toHaveTextContent('3');
+    expect(within(chat).getByLabelText('Непрочитанных сообщений: 3')).toHaveTextContent(
+      '3',
+    );
 
     releaseNotification?.();
 
@@ -739,6 +741,49 @@ describe('receiving messages', () => {
       within(incomingMessage).queryByRole('button', { name: /повторить/i }),
     ).not.toBeInTheDocument();
     await waitFor(() => expect(deletedReceiptId).toBe('1234567'));
+  });
+
+  it('shows an incoming media message as an external link', async () => {
+    let notificationDelivered = false;
+
+    server.use(
+      http.get(receiveNotificationEndpoint, async () => {
+        if (notificationDelivered) {
+          await delay('infinite');
+        }
+
+        await delay(300);
+        notificationDelivered = true;
+        return HttpResponse.json({
+          receiptId: 1234568,
+          body: {
+            typeWebhook: 'incomingMessageReceived',
+            timestamp: 1763115112,
+            idMessage: 'incoming-image',
+            senderData: { chatId: '10000000' },
+            messageData: {
+              typeMessage: 'imageMessage',
+              fileMessageData: {
+                downloadUrl: 'https://media.example.com/image.webp',
+                caption: 'Фотография',
+              },
+            },
+          },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+    await connect(user);
+    await createChat(user);
+
+    const mediaLink = await screen.findByRole('link', {
+      name: 'Открыть медиафайл',
+    });
+    expect(mediaLink).toHaveAttribute('href', 'https://media.example.com/image.webp');
+    expect(
+      within(mediaLink.closest('article')!).getByText('Фотография'),
+    ).toBeInTheDocument();
   });
 
   it('does not render duplicate incoming messages', async () => {

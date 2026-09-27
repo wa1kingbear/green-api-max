@@ -27,6 +27,7 @@ export interface Message {
   chatId: string;
   direction: MessageDirection;
   text: string;
+  mediaUrl?: string;
   timestamp: number;
   status: MessageStatus;
 }

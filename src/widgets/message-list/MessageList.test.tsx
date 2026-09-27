@@ -15,6 +15,31 @@ function createMessage(id: string, timestamp: number): Message {
 }
 
 describe('MessageList', () => {
+  it('shows media as a link that opens in a new tab', () => {
+    render(
+      <MessageList
+        canLoadMore={false}
+        isLoadingMore={false}
+        loadMoreFailed={false}
+        messages={[
+          {
+            ...createMessage('media', 1),
+            text: 'Фотография',
+            mediaUrl: 'https://media.example.com/image.webp',
+          },
+        ]}
+        onLoadMore={() => undefined}
+        onRetry={() => undefined}
+      />,
+    );
+
+    const link = screen.getByRole('link', { name: 'Открыть медиафайл' });
+    expect(link).toHaveAttribute('href', 'https://media.example.com/image.webp');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByText('Фотография')).toBeInTheDocument();
+  });
+
   it('shows a control for returning to the bottom after scrolling up', () => {
     render(
       <MessageList

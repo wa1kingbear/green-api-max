@@ -171,7 +171,17 @@ export function MessageList({
                       : ''
                   }`}
                 >
-                  <p>{message.text}</p>
+                  {message.text && <p>{message.text}</p>}
+                  {message.mediaUrl && (
+                    <a
+                      className={styles.mediaLink}
+                      href={message.mediaUrl}
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Открыть медиафайл
+                    </a>
+                  )}
                   <footer>
                     <time dateTime={new Date(message.timestamp).toISOString()}>
                       {timeFormatter.format(message.timestamp)}

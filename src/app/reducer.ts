@@ -39,6 +39,10 @@ function updateChatPreview(
   return [updatedChat, ...state.chats.filter((item) => item.chatId !== chatId)];
 }
 
+function getMessagePreview(message: AppState['messages'][number]): string {
+  return message.text || (message.mediaUrl ? 'Медиафайл' : '');
+}
+
 function mergeMessages(history: AppState['messages'], current: AppState['messages']) {
   const messagesById = new Map(history.map((message) => [message.id, message]));
 
@@ -143,7 +147,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             ...chat,
             ...(isNewerMessage
               ? {
-                  lastMessage: message.text,
+                  lastMessage: getMessagePreview(message),
                   lastMessageTimestamp: message.timestamp,
                 }
               : {}),
@@ -200,7 +204,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ? updateChatPreview(
               state,
               action.payload.chatId,
-              latestMessage.text,
+              getMessagePreview(latestMessage),
               latestMessage.timestamp,
               false,
             )
@@ -227,7 +231,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         chats: updateChatPreview(
           state,
           action.payload.chatId,
-          action.payload.text,
+          getMessagePreview(action.payload),
           action.payload.timestamp,
         ),
       };
@@ -242,7 +246,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const chats = updateChatPreview(
         state,
         action.payload.chatId,
-        action.payload.text,
+        getMessagePreview(action.payload),
         action.payload.timestamp,
       ).map((chat) =>
         chat.chatId === action.payload.chatId

@@ -1,4 +1,4 @@
-import { parseIncomingTextMessage } from './notification';
+import { parseIncomingMessage } from './notification';
 
 const notification = {
   typeWebhook: 'incomingMessageReceived',
@@ -11,13 +11,37 @@ const notification = {
   },
 };
 
-describe('parseIncomingTextMessage', () => {
+describe('parseIncomingMessage', () => {
   it('converts a MAX text notification to the app message model', () => {
-    expect(parseIncomingTextMessage(notification)).toEqual({
+    expect(parseIncomingMessage(notification)).toEqual({
       id: '1763115112345',
       chatId: '10000000',
       direction: 'incoming',
       text: 'Ответ из MAX',
+      timestamp: 1763115112000,
+      status: 'sent',
+    });
+  });
+
+  it('converts a MAX media notification to a message with a safe link', () => {
+    expect(
+      parseIncomingMessage({
+        ...notification,
+        idMessage: 'image-1',
+        messageData: {
+          typeMessage: 'imageMessage',
+          fileMessageData: {
+            downloadUrl: 'https://media.example.com/image.webp',
+            caption: 'Фотография',
+          },
+        },
+      }),
+    ).toEqual({
+      id: 'image-1',
+      chatId: '10000000',
+      direction: 'incoming',
+      text: 'Фотография',
+      mediaUrl: 'https://media.example.com/image.webp',
       timestamp: 1763115112000,
       status: 'sent',
     });
@@ -29,8 +53,15 @@ describe('parseIncomingTextMessage', () => {
       ...notification,
       messageData: { typeMessage: 'imageMessage', fileMessageData: {} },
     },
+    {
+      ...notification,
+      messageData: {
+        typeMessage: 'imageMessage',
+        fileMessageData: { downloadUrl: 'javascript:alert(1)' },
+      },
+    },
     { ...notification, idMessage: null },
   ])('ignores unsupported or malformed notifications', (value) => {
-    expect(parseIncomingTextMessage(value)).toBeNull();
+    expect(parseIncomingMessage(value)).toBeNull();
   });
 });

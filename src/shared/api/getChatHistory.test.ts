@@ -45,6 +45,8 @@ describe('getChatHistory', () => {
             timestamp: 15,
             chatId: '10000000',
             typeMessage: 'imageMessage',
+            downloadUrl: 'https://media.example.com/image.webp',
+            caption: 'Фотография',
           },
         ]);
       }),
@@ -62,6 +64,15 @@ describe('getChatHistory', () => {
         status: 'sent',
       },
       {
+        id: 'image-1',
+        chatId: '10000000',
+        direction: 'incoming',
+        text: 'Фотография',
+        mediaUrl: 'https://media.example.com/image.webp',
+        timestamp: 15_000,
+        status: 'sent',
+      },
+      {
         id: 'message-2',
         chatId: '10000000',
         direction: 'incoming',
@@ -70,6 +81,27 @@ describe('getChatHistory', () => {
         status: 'sent',
       },
     ]);
+  });
+
+  it('ignores media messages without a safe download URL', async () => {
+    server.use(
+      http.post(endpoint, () =>
+        HttpResponse.json([
+          {
+            type: 'incoming',
+            idMessage: 'image-1',
+            timestamp: 15,
+            chatId: '10000000',
+            typeMessage: 'imageMessage',
+            downloadUrl: 'javascript:alert(1)',
+          },
+        ]),
+      ),
+    );
+
+    await expect(
+      getChatHistory({ apiUrl, credentials, chatId: '10000000' }),
+    ).resolves.toEqual([]);
   });
 
   it('returns a retryable error for a temporary failure', async () => {
@@ -148,8 +180,6 @@ describe('getChatHistory', () => {
     ]);
 
     expect(requestStartedAt).toHaveLength(2);
-    expect(requestStartedAt[1]! - requestStartedAt[0]!).toBeGreaterThanOrEqual(
-      1_200,
-    );
+    expect(requestStartedAt[1]! - requestStartedAt[0]!).toBeGreaterThanOrEqual(1_200);
   });
 });
