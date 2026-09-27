@@ -40,6 +40,11 @@
   line-height: 1.35;
 }
 
+.inputArea textarea:focus,
+.inputArea textarea:focus-visible {
+  outline: none;
+}
+
 .inputArea textarea::placeholder {
   color: #626a72;
 }
